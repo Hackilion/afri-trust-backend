@@ -2,7 +2,8 @@ from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Request
-from sqlalchemy import select, func as sa_func
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -230,6 +231,17 @@ async def add_step(
     if not tp:
         raise NotFoundError("Active tier profile not found")
 
+    existing_order = await db.execute(
+        select(WorkflowStep).where(
+            WorkflowStep.workflow_id == wf.id,
+            WorkflowStep.step_order == body.step_order,
+        )
+    )
+    if existing_order.scalar_one_or_none():
+        raise BadRequestError(
+            f"Step order {body.step_order} already exists in this workflow"
+        )
+
     step = WorkflowStep(
         workflow_id=wf.id,
         tier_profile_id=body.tier_profile_id,
@@ -237,7 +249,13 @@ async def add_step(
         is_optional=body.is_optional,
     )
     db.add(step)
-    await db.flush()
+    try:
+        await db.flush()
+    except IntegrityError:
+        await db.rollback()
+        raise BadRequestError(
+            f"Step order {body.step_order} already exists in this workflow"
+        )
 
     step.tier_profile = tp
     return _step_to_out(step)
@@ -263,12 +281,29 @@ async def update_step(
     if not step:
         raise NotFoundError("Step not found")
 
-    if body.step_order is not None:
+    if body.step_order is not None and body.step_order != step.step_order:
+        conflict = await db.execute(
+            select(WorkflowStep).where(
+                WorkflowStep.workflow_id == wf_id,
+                WorkflowStep.step_order == body.step_order,
+                WorkflowStep.id != step_id,
+            )
+        )
+        if conflict.scalar_one_or_none():
+            raise BadRequestError(
+                f"Step order {body.step_order} already used by another step"
+            )
         step.step_order = body.step_order
+
     if body.is_optional is not None:
         step.is_optional = body.is_optional
 
-    await db.flush()
+    try:
+        await db.flush()
+    except IntegrityError:
+        await db.rollback()
+        raise BadRequestError("Step order conflict")
+
     return _step_to_out(step)
 
 

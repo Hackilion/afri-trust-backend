@@ -2,10 +2,11 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import AuthContext, require_role, get_client_ip
-from app.core.exceptions import NotFoundError
+from app.core.exceptions import BadRequestError, NotFoundError
 from app.core.security import generate_api_key
 from app.db.session import get_db
 from app.models.organization import ApiKey
@@ -34,7 +35,11 @@ async def create_api_key(
         scopes=body.scopes,
     )
     db.add(api_key)
-    await db.flush()
+    try:
+        await db.flush()
+    except IntegrityError:
+        await db.rollback()
+        raise BadRequestError("API key generation conflict — please retry")
 
     await audit_service.log_event(
         db,

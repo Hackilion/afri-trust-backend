@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
 
 from app.api.deps import AuthContext, get_auth_context, get_client_ip, require_jwt, require_role
 from app.core.exceptions import BadRequestError, ConflictError, NotFoundError
@@ -44,7 +45,11 @@ async def create_applicant(
         metadata_=body.metadata,
     )
     db.add(applicant)
-    await db.flush()
+    try:
+        await db.flush()
+    except IntegrityError:
+        await db.rollback()
+        raise ConflictError("Applicant with this external_id already exists")
 
     await audit_service.log_event(
         db,
