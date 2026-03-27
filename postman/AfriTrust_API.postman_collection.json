@@ -1,0 +1,445 @@
+{
+  "info": {
+    "name": "AfriTrust API",
+    "description": "Complete AfriTrust identity verification API collection.\n\nEach folder contains both positive (happy path) and negative (validation) tests.\nRun folders in order: Authentication → API Keys → Tier Profiles → Workflows → Applicants → Verifications → KYC Data & Reports → Consent & Identity → Webhooks → Audit Logs.\n\nVariables auto-chain between requests via test scripts.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {"key": "base_url", "value": "http://localhost:8000/v1"},
+    {"key": "jwt_token", "value": ""},
+    {"key": "refresh_token", "value": ""},
+    {"key": "api_key", "value": ""},
+    {"key": "org_id", "value": ""},
+    {"key": "basic_tier_id", "value": ""},
+    {"key": "advanced_tier_id", "value": ""},
+    {"key": "workflow_id", "value": ""},
+    {"key": "draft_wf_id", "value": ""},
+    {"key": "step1_id", "value": ""},
+    {"key": "applicant_id", "value": ""},
+    {"key": "session_id", "value": ""},
+    {"key": "verification_token", "value": ""},
+    {"key": "webhook_id", "value": ""},
+    {"key": "consent_id", "value": ""},
+    {"key": "email_verify_token", "value": ""}
+  ],
+  "item": [
+    {
+      "name": "1. Authentication",
+      "item": [
+        {
+          "name": "Register Organization",
+          "event": [{"listen": "test", "script": {"exec": ["var d = pm.response.json();", "pm.collectionVariables.set('org_id', d.org_id);", "pm.collectionVariables.set('email_verify_token', d.email_verify_token);", "pm.test('201 Created', () => pm.response.to.have.status(201));", "pm.test('Returns verify token', () => pm.expect(d.email_verify_token).to.be.a('string'));"]}}],
+          "request": {"method": "POST", "header": [{"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\n  \"email\": \"admin@afritrust-demo.com\",\n  \"password\": \"SecurePass123!\",\n  \"org_name\": \"AfriTrust Demo Org\",\n  \"legal_name\": \"AfriTrust Demo Ltd\",\n  \"country\": \"ET\",\n  \"industry\": \"fintech\"\n}"}, "url": {"raw": "{{base_url}}/auth/register", "host": ["{{base_url}}"], "path": ["auth", "register"]}}
+        },
+        {
+          "name": "NEGATIVE: Register with weak password",
+          "event": [{"listen": "test", "script": {"exec": ["pm.test('422 Validation Error', () => pm.response.to.have.status(422));"]}}],
+          "request": {"method": "POST", "header": [{"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\n  \"email\": \"test@test.com\",\n  \"password\": \"weak\",\n  \"org_name\": \"Test\"\n}"}, "url": {"raw": "{{base_url}}/auth/register", "host": ["{{base_url}}"], "path": ["auth", "register"]}}
+        },
+        {
+          "name": "NEGATIVE: Register duplicate email",
+          "event": [{"listen": "test", "script": {"exec": ["pm.test('409 Conflict', () => pm.response.to.have.status(409));"]}}],
+          "request": {"method": "POST", "header": [{"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\n  \"email\": \"admin@afritrust-demo.com\",\n  \"password\": \"Secure123\",\n  \"org_name\": \"Duplicate Org\"\n}"}, "url": {"raw": "{{base_url}}/auth/register", "host": ["{{base_url}}"], "path": ["auth", "register"]}}
+        },
+        {
+          "name": "NEGATIVE: Login before email verification",
+          "event": [{"listen": "test", "script": {"exec": ["pm.test('401 Email not verified', () => pm.response.to.have.status(401));"]}}],
+          "request": {"method": "POST", "header": [{"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\n  \"email\": \"admin@afritrust-demo.com\",\n  \"password\": \"SecurePass123!\"\n}"}, "url": {"raw": "{{base_url}}/auth/login", "host": ["{{base_url}}"], "path": ["auth", "login"]}}
+        },
+        {
+          "name": "NEGATIVE: Verify with invalid token",
+          "event": [{"listen": "test", "script": {"exec": ["pm.test('400 Bad Request', () => pm.response.to.have.status(400));"]}}],
+          "request": {"method": "POST", "header": [{"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\"token\": \"invalid-fake-token\"}"}, "url": {"raw": "{{base_url}}/auth/verify-email", "host": ["{{base_url}}"], "path": ["auth", "verify-email"]}}
+        },
+        {
+          "name": "Verify Email",
+          "event": [{"listen": "test", "script": {"exec": ["pm.test('200 OK', () => pm.response.to.have.status(200));"]}}],
+          "request": {"method": "POST", "header": [{"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\"token\": \"{{email_verify_token}}\"}"}, "url": {"raw": "{{base_url}}/auth/verify-email", "host": ["{{base_url}}"], "path": ["auth", "verify-email"]}}
+        },
+        {
+          "name": "NEGATIVE: Login with wrong password",
+          "event": [{"listen": "test", "script": {"exec": ["pm.test('401', () => pm.response.to.have.status(401));"]}}],
+          "request": {"method": "POST", "header": [{"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\"email\": \"admin@afritrust-demo.com\", \"password\": \"WrongPass1\"}"}, "url": {"raw": "{{base_url}}/auth/login", "host": ["{{base_url}}"], "path": ["auth", "login"]}}
+        },
+        {
+          "name": "Login",
+          "event": [{"listen": "test", "script": {"exec": ["var d = pm.response.json();", "pm.collectionVariables.set('jwt_token', d.access_token);", "pm.collectionVariables.set('refresh_token', d.refresh_token);", "pm.test('200 OK', () => pm.response.to.have.status(200));", "pm.test('Has tokens', () => pm.expect(d.access_token).to.be.a('string'));"]}}],
+          "request": {"method": "POST", "header": [{"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\n  \"email\": \"admin@afritrust-demo.com\",\n  \"password\": \"SecurePass123!\"\n}"}, "url": {"raw": "{{base_url}}/auth/login", "host": ["{{base_url}}"], "path": ["auth", "login"]}}
+        },
+        {
+          "name": "Get Current User (me)",
+          "event": [{"listen": "test", "script": {"exec": ["pm.test('200', () => pm.response.to.have.status(200));", "pm.test('Has org', () => pm.expect(pm.response.json().org_name).to.be.a('string'));"]}}],
+          "request": {"method": "GET", "header": [{"key": "Authorization", "value": "Bearer {{jwt_token}}"}], "url": {"raw": "{{base_url}}/auth/me", "host": ["{{base_url}}"], "path": ["auth", "me"]}}
+        },
+        {
+          "name": "Refresh Token",
+          "event": [{"listen": "test", "script": {"exec": ["pm.collectionVariables.set('jwt_token', pm.response.json().access_token);", "pm.test('200', () => pm.response.to.have.status(200));"]}}],
+          "request": {"method": "POST", "header": [{"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\"refresh_token\": \"{{refresh_token}}\"}"}, "url": {"raw": "{{base_url}}/auth/refresh", "host": ["{{base_url}}"], "path": ["auth", "refresh"]}}
+        },
+        {
+          "name": "NEGATIVE: Access without auth",
+          "event": [{"listen": "test", "script": {"exec": ["pm.test('401', () => pm.response.to.have.status(401));"]}}],
+          "request": {"method": "GET", "url": {"raw": "{{base_url}}/tier-profiles", "host": ["{{base_url}}"], "path": ["tier-profiles"]}}
+        }
+      ]
+    },
+    {
+      "name": "2. API Keys",
+      "item": [
+        {
+          "name": "Create API Key",
+          "event": [{"listen": "test", "script": {"exec": ["var d = pm.response.json();", "pm.collectionVariables.set('api_key', d.api_key);", "pm.test('201', () => pm.response.to.have.status(201));", "pm.test('Secret returned once', () => pm.expect(d.api_key.length).to.be.above(20));"]}}],
+          "request": {"method": "POST", "header": [{"key": "Authorization", "value": "Bearer {{jwt_token}}"}, {"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\n  \"name\": \"mobile-sdk-key\",\n  \"scopes\": [\"read\", \"write\"]\n}"}, "url": {"raw": "{{base_url}}/api-keys", "host": ["{{base_url}}"], "path": ["api-keys"]}}
+        },
+        {
+          "name": "List API Keys",
+          "event": [{"listen": "test", "script": {"exec": ["pm.test('200 + array', () => { pm.response.to.have.status(200); pm.expect(pm.response.json()).to.be.an('array'); });"]}}],
+          "request": {"method": "GET", "header": [{"key": "Authorization", "value": "Bearer {{jwt_token}}"}], "url": {"raw": "{{base_url}}/api-keys", "host": ["{{base_url}}"], "path": ["api-keys"]}}
+        }
+      ]
+    },
+    {
+      "name": "3. Tier Profiles",
+      "item": [
+        {
+          "name": "Get Check Catalogue",
+          "event": [{"listen": "test", "script": {"exec": ["pm.test('Has check types', () => pm.expect(pm.response.json().check_types.length).to.be.above(0));"]}}],
+          "request": {"method": "GET", "header": [{"key": "Authorization", "value": "Bearer {{jwt_token}}"}], "url": {"raw": "{{base_url}}/tier-profiles/check-catalogue", "host": ["{{base_url}}"], "path": ["tier-profiles", "check-catalogue"]}}
+        },
+        {
+          "name": "Create Basic KYC Tier",
+          "event": [{"listen": "test", "script": {"exec": ["pm.collectionVariables.set('basic_tier_id', pm.response.json().id);", "pm.test('201', () => pm.response.to.have.status(201));"]}}],
+          "request": {"method": "POST", "header": [{"key": "Authorization", "value": "Bearer {{jwt_token}}"}, {"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\n  \"name\": \"Basic KYC\",\n  \"description\": \"Email, phone, and selfie verification\",\n  \"required_checks\": [\"email\", \"phone\", \"selfie\"],\n  \"attribute_schema\": [\n    {\"key\": \"full_name\", \"label\": \"Full Name\", \"data_type\": \"string\", \"required\": true, \"validation\": {\"min_length\": 2, \"max_length\": 200}},\n    {\"key\": \"email_address\", \"label\": \"Email\", \"data_type\": \"string\", \"required\": true},\n    {\"key\": \"phone_number\", \"label\": \"Phone\", \"data_type\": \"string\", \"required\": true}\n  ],\n  \"accepted_document_types\": [],\n  \"settings\": {}\n}"}, "url": {"raw": "{{base_url}}/tier-profiles", "host": ["{{base_url}}"], "path": ["tier-profiles"]}}
+        },
+        {
+          "name": "Create Document + Biometric Tier",
+          "event": [{"listen": "test", "script": {"exec": ["pm.collectionVariables.set('advanced_tier_id', pm.response.json().id);", "pm.test('201', () => pm.response.to.have.status(201));"]}}],
+          "request": {"method": "POST", "header": [{"key": "Authorization", "value": "Bearer {{jwt_token}}"}, {"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\n  \"name\": \"Document + Biometric\",\n  \"description\": \"Government ID with OCR + face matching\",\n  \"required_checks\": [\"government_id\", \"face_match\"],\n  \"attribute_schema\": [\n    {\"key\": \"id_number\", \"label\": \"ID Number\", \"data_type\": \"string\", \"required\": true},\n    {\"key\": \"date_of_birth\", \"label\": \"Date of Birth\", \"data_type\": \"date\", \"required\": true},\n    {\"key\": \"nationality\", \"label\": \"Nationality\", \"data_type\": \"string\", \"required\": true},\n    {\"key\": \"gender\", \"label\": \"Gender\", \"data_type\": \"enum\", \"required\": false, \"options\": [\"male\", \"female\", \"other\"]}\n  ],\n  \"accepted_document_types\": [\"passport\", \"national_id\", \"drivers_license\"],\n  \"settings\": {\"face_match_threshold\": 0.85}\n}"}, "url": {"raw": "{{base_url}}/tier-profiles", "host": ["{{base_url}}"], "path": ["tier-profiles"]}}
+        },
+        {
+          "name": "NEGATIVE: Invalid check type",
+          "event": [{"listen": "test", "script": {"exec": ["pm.test('422', () => pm.response.to.have.status(422));"]}}],
+          "request": {"method": "POST", "header": [{"key": "Authorization", "value": "Bearer {{jwt_token}}"}, {"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\"name\":\"Bad\",\"required_checks\":[\"nonexistent\"],\"attribute_schema\":[],\"settings\":{}}"}, "url": {"raw": "{{base_url}}/tier-profiles", "host": ["{{base_url}}"], "path": ["tier-profiles"]}}
+        },
+        {
+          "name": "NEGATIVE: Duplicate attribute keys",
+          "event": [{"listen": "test", "script": {"exec": ["pm.test('422', () => pm.response.to.have.status(422));"]}}],
+          "request": {"method": "POST", "header": [{"key": "Authorization", "value": "Bearer {{jwt_token}}"}, {"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\"name\":\"Bad\",\"required_checks\":[\"email\"],\"attribute_schema\":[{\"key\":\"name\",\"label\":\"N\",\"data_type\":\"string\"},{\"key\":\"name\",\"label\":\"N2\",\"data_type\":\"string\"}],\"settings\":{}}"}, "url": {"raw": "{{base_url}}/tier-profiles", "host": ["{{base_url}}"], "path": ["tier-profiles"]}}
+        },
+        {
+          "name": "NEGATIVE: Enum without options",
+          "event": [{"listen": "test", "script": {"exec": ["pm.test('422', () => pm.response.to.have.status(422));"]}}],
+          "request": {"method": "POST", "header": [{"key": "Authorization", "value": "Bearer {{jwt_token}}"}, {"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\"name\":\"Bad\",\"required_checks\":[\"email\"],\"attribute_schema\":[{\"key\":\"g\",\"label\":\"G\",\"data_type\":\"enum\"}],\"settings\":{}}"}, "url": {"raw": "{{base_url}}/tier-profiles", "host": ["{{base_url}}"], "path": ["tier-profiles"]}}
+        },
+        {
+          "name": "List Tier Profiles",
+          "request": {"method": "GET", "header": [{"key": "Authorization", "value": "Bearer {{jwt_token}}"}], "url": {"raw": "{{base_url}}/tier-profiles", "host": ["{{base_url}}"], "path": ["tier-profiles"]}}
+        },
+        {
+          "name": "Get Tier Profile by ID",
+          "request": {"method": "GET", "header": [{"key": "Authorization", "value": "Bearer {{jwt_token}}"}], "url": {"raw": "{{base_url}}/tier-profiles/{{basic_tier_id}}", "host": ["{{base_url}}"], "path": ["tier-profiles", "{{basic_tier_id}}"]}}
+        }
+      ]
+    },
+    {
+      "name": "4. Workflows",
+      "item": [
+        {
+          "name": "Create Workflow (draft)",
+          "event": [{"listen": "test", "script": {"exec": ["var d = pm.response.json();", "pm.collectionVariables.set('workflow_id', d.id);", "pm.test('201 draft', () => { pm.response.to.have.status(201); pm.expect(d.status).to.eql('draft'); });"]}}],
+          "request": {"method": "POST", "header": [{"key": "Authorization", "value": "Bearer {{jwt_token}}"}, {"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\n  \"name\": \"Fintech Full KYC\",\n  \"description\": \"Two-step verification: basic info + document with biometrics\"\n}"}, "url": {"raw": "{{base_url}}/workflows", "host": ["{{base_url}}"], "path": ["workflows"]}}
+        },
+        {
+          "name": "Add Step 1 (Basic KYC)",
+          "event": [{"listen": "test", "script": {"exec": ["pm.collectionVariables.set('step1_id', pm.response.json().id);", "pm.test('201', () => pm.response.to.have.status(201));"]}}],
+          "request": {"method": "POST", "header": [{"key": "Authorization", "value": "Bearer {{jwt_token}}"}, {"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\"tier_profile_id\": \"{{basic_tier_id}}\", \"step_order\": 1}"}, "url": {"raw": "{{base_url}}/workflows/{{workflow_id}}/steps", "host": ["{{base_url}}"], "path": ["workflows", "{{workflow_id}}", "steps"]}}
+        },
+        {
+          "name": "Add Step 2 (Doc + Bio)",
+          "request": {"method": "POST", "header": [{"key": "Authorization", "value": "Bearer {{jwt_token}}"}, {"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\"tier_profile_id\": \"{{advanced_tier_id}}\", \"step_order\": 2}"}, "url": {"raw": "{{base_url}}/workflows/{{workflow_id}}/steps", "host": ["{{base_url}}"], "path": ["workflows", "{{workflow_id}}", "steps"]}}
+        },
+        {
+          "name": "NEGATIVE: Step order 0",
+          "event": [{"listen": "test", "script": {"exec": ["pm.test('422', () => pm.response.to.have.status(422));"]}}],
+          "request": {"method": "POST", "header": [{"key": "Authorization", "value": "Bearer {{jwt_token}}"}, {"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\"tier_profile_id\": \"{{basic_tier_id}}\", \"step_order\": 0}"}, "url": {"raw": "{{base_url}}/workflows/{{workflow_id}}/steps", "host": ["{{base_url}}"], "path": ["workflows", "{{workflow_id}}", "steps"]}}
+        },
+        {
+          "name": "List Steps",
+          "request": {"method": "GET", "header": [{"key": "Authorization", "value": "Bearer {{jwt_token}}"}], "url": {"raw": "{{base_url}}/workflows/{{workflow_id}}/steps", "host": ["{{base_url}}"], "path": ["workflows", "{{workflow_id}}", "steps"]}}
+        },
+        {
+          "name": "Publish Workflow",
+          "event": [{"listen": "test", "script": {"exec": ["pm.test('Published', () => pm.expect(pm.response.json().status).to.eql('published'));"]}}],
+          "request": {"method": "POST", "header": [{"key": "Authorization", "value": "Bearer {{jwt_token}}"}], "url": {"raw": "{{base_url}}/workflows/{{workflow_id}}/publish", "host": ["{{base_url}}"], "path": ["workflows", "{{workflow_id}}", "publish"]}}
+        },
+        {
+          "name": "NEGATIVE: Edit published workflow",
+          "event": [{"listen": "test", "script": {"exec": ["pm.test('422', () => pm.response.to.have.status(422));"]}}],
+          "request": {"method": "PUT", "header": [{"key": "Authorization", "value": "Bearer {{jwt_token}}"}, {"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\"name\": \"Changed\"}"}, "url": {"raw": "{{base_url}}/workflows/{{workflow_id}}", "host": ["{{base_url}}"], "path": ["workflows", "{{workflow_id}}"]}}
+        },
+        {
+          "name": "NEGATIVE: Add step to published",
+          "event": [{"listen": "test", "script": {"exec": ["pm.test('422', () => pm.response.to.have.status(422));"]}}],
+          "request": {"method": "POST", "header": [{"key": "Authorization", "value": "Bearer {{jwt_token}}"}, {"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\"tier_profile_id\": \"{{basic_tier_id}}\", \"step_order\": 3}"}, "url": {"raw": "{{base_url}}/workflows/{{workflow_id}}/steps", "host": ["{{base_url}}"], "path": ["workflows", "{{workflow_id}}", "steps"]}}
+        },
+        {
+          "name": "Get Workflow Detail",
+          "request": {"method": "GET", "header": [{"key": "Authorization", "value": "Bearer {{jwt_token}}"}], "url": {"raw": "{{base_url}}/workflows/{{workflow_id}}", "host": ["{{base_url}}"], "path": ["workflows", "{{workflow_id}}"]}}
+        },
+        {
+          "name": "List Workflows",
+          "request": {"method": "GET", "header": [{"key": "Authorization", "value": "Bearer {{jwt_token}}"}], "url": {"raw": "{{base_url}}/workflows?status=published", "host": ["{{base_url}}"], "path": ["workflows"], "query": [{"key": "status", "value": "published"}]}}
+        },
+        {
+          "name": "Clone Workflow",
+          "event": [{"listen": "test", "script": {"exec": ["pm.test('201 draft copy', () => { pm.response.to.have.status(201); pm.expect(pm.response.json().status).to.eql('draft'); });"]}}],
+          "request": {"method": "POST", "header": [{"key": "Authorization", "value": "Bearer {{jwt_token}}"}], "url": {"raw": "{{base_url}}/workflows/{{workflow_id}}/clone", "host": ["{{base_url}}"], "path": ["workflows", "{{workflow_id}}", "clone"]}}
+        }
+      ]
+    },
+    {
+      "name": "5. Applicants",
+      "item": [
+        {
+          "name": "Create Applicant (via API Key)",
+          "event": [{"listen": "test", "script": {"exec": ["pm.collectionVariables.set('applicant_id', pm.response.json().id);", "pm.test('201', () => pm.response.to.have.status(201));"]}}],
+          "request": {"method": "POST", "header": [{"key": "X-API-Key", "value": "{{api_key}}"}, {"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\n  \"external_id\": \"user-42\",\n  \"email\": \"abebe.kebede@example.com\",\n  \"phone\": \"+251911223344\",\n  \"full_name\": \"Abebe Kebede\",\n  \"metadata\": {\"source\": \"mobile_app\", \"country\": \"ET\"}\n}"}, "url": {"raw": "{{base_url}}/applicants", "host": ["{{base_url}}"], "path": ["applicants"]}}
+        },
+        {
+          "name": "NEGATIVE: Duplicate external_id",
+          "event": [{"listen": "test", "script": {"exec": ["pm.test('409', () => pm.response.to.have.status(409));"]}}],
+          "request": {"method": "POST", "header": [{"key": "X-API-Key", "value": "{{api_key}}"}, {"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\"external_id\": \"user-42\", \"full_name\": \"Duplicate\"}"}, "url": {"raw": "{{base_url}}/applicants", "host": ["{{base_url}}"], "path": ["applicants"]}}
+        },
+        {
+          "name": "NEGATIVE: Get non-existent applicant",
+          "event": [{"listen": "test", "script": {"exec": ["pm.test('404', () => pm.response.to.have.status(404));"]}}],
+          "request": {"method": "GET", "header": [{"key": "X-API-Key", "value": "{{api_key}}"}], "url": {"raw": "{{base_url}}/applicants/00000000-0000-0000-0000-000000000000", "host": ["{{base_url}}"], "path": ["applicants", "00000000-0000-0000-0000-000000000000"]}}
+        },
+        {
+          "name": "Get Applicant",
+          "request": {"method": "GET", "header": [{"key": "X-API-Key", "value": "{{api_key}}"}], "url": {"raw": "{{base_url}}/applicants/{{applicant_id}}", "host": ["{{base_url}}"], "path": ["applicants", "{{applicant_id}}"]}}
+        },
+        {
+          "name": "Update Applicant",
+          "request": {"method": "PUT", "header": [{"key": "Authorization", "value": "Bearer {{jwt_token}}"}, {"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\"phone\": \"+251922334455\", \"metadata\": {\"updated\": true}}"}, "url": {"raw": "{{base_url}}/applicants/{{applicant_id}}", "host": ["{{base_url}}"], "path": ["applicants", "{{applicant_id}}"]}}
+        }
+      ]
+    },
+    {
+      "name": "6. Verification Flow",
+      "item": [
+        {
+          "name": "Start Verification Session",
+          "event": [{"listen": "test", "script": {"exec": ["var d = pm.response.json();", "pm.collectionVariables.set('session_id', d.id);", "pm.test('201 created', () => { pm.response.to.have.status(201); pm.expect(d.status).to.eql('created'); });"]}}],
+          "request": {"method": "POST", "header": [{"key": "X-API-Key", "value": "{{api_key}}"}, {"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\n  \"applicant_id\": \"{{applicant_id}}\",\n  \"workflow_id\": \"{{workflow_id}}\"\n}"}, "url": {"raw": "{{base_url}}/verifications", "host": ["{{base_url}}"], "path": ["verifications"]}}
+        },
+        {
+          "name": "NEGATIVE: Duplicate active session",
+          "event": [{"listen": "test", "script": {"exec": ["pm.test('400', () => pm.response.to.have.status(400));"]}}],
+          "request": {"method": "POST", "header": [{"key": "X-API-Key", "value": "{{api_key}}"}, {"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\"applicant_id\": \"{{applicant_id}}\", \"workflow_id\": \"{{workflow_id}}\"}"}, "url": {"raw": "{{base_url}}/verifications", "host": ["{{base_url}}"], "path": ["verifications"]}}
+        },
+        {
+          "name": "Get Required Data (Step 1)",
+          "event": [{"listen": "test", "script": {"exec": ["var d = pm.response.json();", "pm.test('Shows pending checks', () => pm.expect(d.checks.pending.length).to.be.above(0));", "pm.test('Shows missing attrs', () => pm.expect(d.attributes.missing_required.length).to.be.above(0));"]}}],
+          "request": {"method": "GET", "header": [{"key": "X-API-Key", "value": "{{api_key}}"}], "url": {"raw": "{{base_url}}/verifications/{{session_id}}/required-data", "host": ["{{base_url}}"], "path": ["verifications", "{{session_id}}", "required-data"]}}
+        },
+        {
+          "name": "NEGATIVE: Submit unknown attribute",
+          "event": [{"listen": "test", "script": {"exec": ["pm.test('400 unknown', () => { pm.response.to.have.status(400); pm.expect(pm.response.json().detail).to.include('Unknown'); });"]}}],
+          "request": {"method": "POST", "header": [{"key": "X-API-Key", "value": "{{api_key}}"}, {"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\"attributes\": {\"nonexistent_field\": \"value\"}}"}, "url": {"raw": "{{base_url}}/verifications/{{session_id}}/attributes", "host": ["{{base_url}}"], "path": ["verifications", "{{session_id}}", "attributes"]}}
+        },
+        {
+          "name": "NEGATIVE: Wrong type for attribute",
+          "event": [{"listen": "test", "script": {"exec": ["pm.test('400 type', () => { pm.response.to.have.status(400); pm.expect(pm.response.json().detail).to.include('must be'); });"]}}],
+          "request": {"method": "POST", "header": [{"key": "X-API-Key", "value": "{{api_key}}"}, {"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\"attributes\": {\"full_name\": 12345}}"}, "url": {"raw": "{{base_url}}/verifications/{{session_id}}/attributes", "host": ["{{base_url}}"], "path": ["verifications", "{{session_id}}", "attributes"]}}
+        },
+        {
+          "name": "NEGATIVE: Value too short (validation rule)",
+          "event": [{"listen": "test", "script": {"exec": ["pm.test('400 min_length', () => { pm.response.to.have.status(400); pm.expect(pm.response.json().detail).to.include('at least'); });"]}}],
+          "request": {"method": "POST", "header": [{"key": "X-API-Key", "value": "{{api_key}}"}, {"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\"attributes\": {\"full_name\": \"A\"}}"}, "url": {"raw": "{{base_url}}/verifications/{{session_id}}/attributes", "host": ["{{base_url}}"], "path": ["verifications", "{{session_id}}", "attributes"]}}
+        },
+        {
+          "name": "Submit Attributes (Step 1 - Basic)",
+          "request": {"method": "POST", "header": [{"key": "X-API-Key", "value": "{{api_key}}"}, {"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\n  \"attributes\": {\n    \"full_name\": \"Abebe Kebede\",\n    \"email_address\": \"abebe.kebede@example.com\",\n    \"phone_number\": \"+251911223344\"\n  }\n}"}, "url": {"raw": "{{base_url}}/verifications/{{session_id}}/attributes", "host": ["{{base_url}}"], "path": ["verifications", "{{session_id}}", "attributes"]}}
+        },
+        {
+          "name": "Upload Selfie (Step 1 - real liveness check)",
+          "request": {"method": "POST", "header": [{"key": "X-API-Key", "value": "{{api_key}}"}], "body": {"mode": "formdata", "formdata": [{"key": "file", "type": "file", "src": ""}]}, "url": {"raw": "{{base_url}}/verifications/{{session_id}}/selfie", "host": ["{{base_url}}"], "path": ["verifications", "{{session_id}}", "selfie"]}}
+        },
+        {
+          "name": "Get Required Data (Step 2)",
+          "event": [{"listen": "test", "script": {"exec": ["var d = pm.response.json();", "pm.test('On step 2', () => pm.expect(d.current_step_order).to.eql(2));", "pm.test('Shows accepted docs', () => pm.expect(d.accepted_document_types.length).to.be.above(0));"]}}],
+          "request": {"method": "GET", "header": [{"key": "X-API-Key", "value": "{{api_key}}"}], "url": {"raw": "{{base_url}}/verifications/{{session_id}}/required-data", "host": ["{{base_url}}"], "path": ["verifications", "{{session_id}}", "required-data"]}}
+        },
+        {
+          "name": "NEGATIVE: Wrong document type for tier",
+          "event": [{"listen": "test", "script": {"exec": ["pm.test('400 doc type', () => { pm.response.to.have.status(400); pm.expect(pm.response.json().detail).to.include('not accepted'); });"]}}],
+          "request": {"method": "POST", "header": [{"key": "X-API-Key", "value": "{{api_key}}"}], "body": {"mode": "formdata", "formdata": [{"key": "document_type", "value": "voter_card", "type": "text"}, {"key": "file", "type": "file", "src": ""}]}, "url": {"raw": "{{base_url}}/verifications/{{session_id}}/documents", "host": ["{{base_url}}"], "path": ["verifications", "{{session_id}}", "documents"]}}
+        },
+        {
+          "name": "NEGATIVE: Invalid date format",
+          "event": [{"listen": "test", "script": {"exec": ["pm.test('400 date', () => { pm.response.to.have.status(400); pm.expect(pm.response.json().detail).to.include('YYYY-MM-DD'); });"]}}],
+          "request": {"method": "POST", "header": [{"key": "X-API-Key", "value": "{{api_key}}"}, {"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\"attributes\": {\"date_of_birth\": \"15-01-1990\"}}"}, "url": {"raw": "{{base_url}}/verifications/{{session_id}}/attributes", "host": ["{{base_url}}"], "path": ["verifications", "{{session_id}}", "attributes"]}}
+        },
+        {
+          "name": "NEGATIVE: Invalid enum value",
+          "event": [{"listen": "test", "script": {"exec": ["pm.test('400 enum', () => { pm.response.to.have.status(400); pm.expect(pm.response.json().detail).to.include('must be one of'); });"]}}],
+          "request": {"method": "POST", "header": [{"key": "X-API-Key", "value": "{{api_key}}"}, {"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\"attributes\": {\"gender\": \"invalid\"}}"}, "url": {"raw": "{{base_url}}/verifications/{{session_id}}/attributes", "host": ["{{base_url}}"], "path": ["verifications", "{{session_id}}", "attributes"]}}
+        },
+        {
+          "name": "Submit Attributes (Step 2 - Document)",
+          "request": {"method": "POST", "header": [{"key": "X-API-Key", "value": "{{api_key}}"}, {"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\n  \"attributes\": {\n    \"id_number\": \"ETH-2024-0012345\",\n    \"date_of_birth\": \"1992-03-15\",\n    \"nationality\": \"Ethiopian\",\n    \"gender\": \"male\"\n  }\n}"}, "url": {"raw": "{{base_url}}/verifications/{{session_id}}/attributes", "host": ["{{base_url}}"], "path": ["verifications", "{{session_id}}", "attributes"]}}
+        },
+        {
+          "name": "Upload Document (Step 2 - real OCR)",
+          "request": {"method": "POST", "header": [{"key": "X-API-Key", "value": "{{api_key}}"}], "body": {"mode": "formdata", "formdata": [{"key": "document_type", "value": "passport", "type": "text"}, {"key": "file", "type": "file", "src": ""}]}, "url": {"raw": "{{base_url}}/verifications/{{session_id}}/documents", "host": ["{{base_url}}"], "path": ["verifications", "{{session_id}}", "documents"]}, "description": "Upload a real passport/ID image. OCR will extract text, classify document type, and compute fraud signals."}
+        },
+        {
+          "name": "Upload Selfie for Face Match (Step 2 - real biometric)",
+          "request": {"method": "POST", "header": [{"key": "X-API-Key", "value": "{{api_key}}"}], "body": {"mode": "formdata", "formdata": [{"key": "file", "type": "file", "src": ""}]}, "url": {"raw": "{{base_url}}/verifications/{{session_id}}/selfie", "host": ["{{base_url}}"], "path": ["verifications", "{{session_id}}", "selfie"]}, "description": "Upload a real selfie. DeepFace will compare with the document photo for face matching. OpenCV checks liveness heuristics."}
+        },
+        {
+          "name": "Get Step Progress",
+          "request": {"method": "GET", "header": [{"key": "X-API-Key", "value": "{{api_key}}"}], "url": {"raw": "{{base_url}}/verifications/{{session_id}}/steps", "host": ["{{base_url}}"], "path": ["verifications", "{{session_id}}", "steps"]}}
+        },
+        {
+          "name": "Get Final Session Status",
+          "request": {"method": "GET", "header": [{"key": "X-API-Key", "value": "{{api_key}}"}], "url": {"raw": "{{base_url}}/verifications/{{session_id}}", "host": ["{{base_url}}"], "path": ["verifications", "{{session_id}}"]}}
+        },
+        {
+          "name": "Manual Review (approve/reject)",
+          "request": {"method": "POST", "header": [{"key": "Authorization", "value": "Bearer {{jwt_token}}"}, {"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\n  \"decision\": \"approve\",\n  \"reason\": \"Manual override — documents verified by compliance team\"\n}"}, "url": {"raw": "{{base_url}}/verifications/{{session_id}}/review", "host": ["{{base_url}}"], "path": ["verifications", "{{session_id}}", "review"]}}
+        }
+      ]
+    },
+    {
+      "name": "7. KYC Data & Reports",
+      "item": [
+        {
+          "name": "List Applicants (paginated + filters)",
+          "event": [{"listen": "test", "script": {"exec": ["pm.test('Paginated', () => pm.expect(pm.response.json().total).to.be.a('number'));"]}}],
+          "request": {"method": "GET", "header": [{"key": "Authorization", "value": "Bearer {{jwt_token}}"}], "url": {"raw": "{{base_url}}/applicants?page=1&page_size=25&sort_by=created_at&sort_order=desc", "host": ["{{base_url}}"], "path": ["applicants"], "query": [{"key": "page", "value": "1"}, {"key": "page_size", "value": "25"}, {"key": "sort_by", "value": "created_at"}, {"key": "sort_order", "value": "desc"}, {"key": "search", "value": "abebe", "disabled": true}, {"key": "status", "value": "approved", "disabled": true}]}}
+        },
+        {
+          "name": "List Verifications (paginated + filters)",
+          "request": {"method": "GET", "header": [{"key": "Authorization", "value": "Bearer {{jwt_token}}"}], "url": {"raw": "{{base_url}}/verifications?page=1&page_size=25", "host": ["{{base_url}}"], "path": ["verifications"], "query": [{"key": "page", "value": "1"}, {"key": "page_size", "value": "25"}, {"key": "status", "value": "", "disabled": true}, {"key": "applicant_id", "value": "", "disabled": true}]}}
+        },
+        {
+          "name": "KYC Summary for Applicant",
+          "event": [{"listen": "test", "script": {"exec": ["pm.test('Has sessions', () => pm.expect(pm.response.json().sessions).to.be.an('array'));"]}}],
+          "request": {"method": "GET", "header": [{"key": "Authorization", "value": "Bearer {{jwt_token}}"}], "url": {"raw": "{{base_url}}/applicants/{{applicant_id}}/kyc-summary", "host": ["{{base_url}}"], "path": ["applicants", "{{applicant_id}}", "kyc-summary"]}}
+        },
+        {
+          "name": "Dashboard Overview Stats",
+          "event": [{"listen": "test", "script": {"exec": ["var d = pm.response.json();", "pm.test('Has metrics', () => { pm.expect(d.total_applicants).to.be.a('number'); pm.expect(d.total_verifications).to.be.a('number'); });"]}}],
+          "request": {"method": "GET", "header": [{"key": "Authorization", "value": "Bearer {{jwt_token}}"}], "url": {"raw": "{{base_url}}/dashboard/stats", "host": ["{{base_url}}"], "path": ["dashboard", "stats"]}}
+        },
+        {
+          "name": "Time Series (daily counts)",
+          "event": [{"listen": "test", "script": {"exec": ["pm.test('Has data array', () => pm.expect(pm.response.json().data).to.be.an('array'));"]}}],
+          "request": {"method": "GET", "header": [{"key": "Authorization", "value": "Bearer {{jwt_token}}"}], "url": {"raw": "{{base_url}}/dashboard/stats/timeseries?days=30", "host": ["{{base_url}}"], "path": ["dashboard", "stats", "timeseries"], "query": [{"key": "days", "value": "30"}]}}
+        },
+        {
+          "name": "Verification Funnel",
+          "event": [{"listen": "test", "script": {"exec": ["pm.test('Has funnel', () => pm.expect(pm.response.json().funnel).to.be.an('object'));"]}}],
+          "request": {"method": "GET", "header": [{"key": "Authorization", "value": "Bearer {{jwt_token}}"}], "url": {"raw": "{{base_url}}/dashboard/stats/funnel?days=30", "host": ["{{base_url}}"], "path": ["dashboard", "stats", "funnel"], "query": [{"key": "days", "value": "30"}]}}
+        },
+        {
+          "name": "Document & Biometric Stats",
+          "event": [{"listen": "test", "script": {"exec": ["pm.test('Has doc stats', () => pm.expect(pm.response.json().total_documents).to.be.a('number'));"]}}],
+          "request": {"method": "GET", "header": [{"key": "Authorization", "value": "Bearer {{jwt_token}}"}], "url": {"raw": "{{base_url}}/dashboard/stats/documents", "host": ["{{base_url}}"], "path": ["dashboard", "stats", "documents"]}}
+        }
+      ]
+    },
+    {
+      "name": "8. Consent & Identity",
+      "item": [
+        {
+          "name": "Grant Consent",
+          "event": [{"listen": "test", "script": {"exec": ["var d = pm.response.json();", "pm.collectionVariables.set('verification_token', d.verification_token);", "pm.collectionVariables.set('consent_id', d.id);", "pm.test('201', () => pm.response.to.have.status(201));"]}}],
+          "request": {"method": "POST", "header": [{"key": "X-API-Key", "value": "{{api_key}}"}, {"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\n  \"granted_attributes\": [\"full_name\", \"email_address\", \"id_number\", \"date_of_birth\"],\n  \"expires_in_days\": 30\n}"}, "url": {"raw": "{{base_url}}/verifications/{{session_id}}/consent", "host": ["{{base_url}}"], "path": ["verifications", "{{session_id}}", "consent"]}}
+        },
+        {
+          "name": "Get Identity Data (via token)",
+          "event": [{"listen": "test", "script": {"exec": ["pm.test('Has attributes', () => pm.expect(Object.keys(pm.response.json().attributes).length).to.be.above(0));"]}}],
+          "request": {"method": "GET", "header": [{"key": "X-API-Key", "value": "{{api_key}}"}], "url": {"raw": "{{base_url}}/identities/{{applicant_id}}?attributes=full_name,id_number&verification_token={{verification_token}}", "host": ["{{base_url}}"], "path": ["identities", "{{applicant_id}}"], "query": [{"key": "attributes", "value": "full_name,id_number"}, {"key": "verification_token", "value": "{{verification_token}}"}]}}
+        },
+        {
+          "name": "NEGATIVE: Invalid verification token",
+          "event": [{"listen": "test", "script": {"exec": ["pm.test('404', () => pm.response.to.have.status(404));"]}}],
+          "request": {"method": "GET", "header": [{"key": "X-API-Key", "value": "{{api_key}}"}], "url": {"raw": "{{base_url}}/identities/{{applicant_id}}?attributes=full_name&verification_token=fake-token", "host": ["{{base_url}}"], "path": ["identities", "{{applicant_id}}"], "query": [{"key": "attributes", "value": "full_name"}, {"key": "verification_token", "value": "fake-token"}]}}
+        },
+        {
+          "name": "List Consents",
+          "request": {"method": "GET", "header": [{"key": "Authorization", "value": "Bearer {{jwt_token}}"}], "url": {"raw": "{{base_url}}/applicants/{{applicant_id}}/consents", "host": ["{{base_url}}"], "path": ["applicants", "{{applicant_id}}", "consents"]}}
+        },
+        {
+          "name": "Revoke Consent",
+          "request": {"method": "POST", "header": [{"key": "Authorization", "value": "Bearer {{jwt_token}}"}], "url": {"raw": "{{base_url}}/applicants/{{applicant_id}}/consents/{{consent_id}}/revoke", "host": ["{{base_url}}"], "path": ["applicants", "{{applicant_id}}", "consents", "{{consent_id}}", "revoke"]}}
+        }
+      ]
+    },
+    {
+      "name": "9. Webhooks",
+      "item": [
+        {
+          "name": "Create Webhook",
+          "event": [{"listen": "test", "script": {"exec": ["pm.collectionVariables.set('webhook_id', pm.response.json().id);", "pm.test('201 + has signing secret', () => { pm.response.to.have.status(201); pm.expect(pm.response.json().signing_secret).to.be.a('string'); });"]}}],
+          "request": {"method": "POST", "header": [{"key": "Authorization", "value": "Bearer {{jwt_token}}"}, {"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\n  \"url\": \"https://webhook.site/your-unique-id\",\n  \"event_types\": [\"verification.created\", \"verification.step_completed\", \"verification.approved\", \"verification.rejected\"]\n}"}, "url": {"raw": "{{base_url}}/webhooks", "host": ["{{base_url}}"], "path": ["webhooks"]}}
+        },
+        {
+          "name": "List Webhooks",
+          "request": {"method": "GET", "header": [{"key": "Authorization", "value": "Bearer {{jwt_token}}"}], "url": {"raw": "{{base_url}}/webhooks", "host": ["{{base_url}}"], "path": ["webhooks"]}}
+        },
+        {
+          "name": "Test Webhook (queue test event)",
+          "request": {"method": "POST", "header": [{"key": "Authorization", "value": "Bearer {{jwt_token}}"}], "url": {"raw": "{{base_url}}/webhooks/{{webhook_id}}/test", "host": ["{{base_url}}"], "path": ["webhooks", "{{webhook_id}}", "test"]}}
+        },
+        {
+          "name": "List Webhook Deliveries",
+          "request": {"method": "GET", "header": [{"key": "Authorization", "value": "Bearer {{jwt_token}}"}], "url": {"raw": "{{base_url}}/webhooks/{{webhook_id}}/deliveries", "host": ["{{base_url}}"], "path": ["webhooks", "{{webhook_id}}", "deliveries"]}}
+        },
+        {
+          "name": "Update Webhook",
+          "request": {"method": "PUT", "header": [{"key": "Authorization", "value": "Bearer {{jwt_token}}"}, {"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\"event_types\": [\"verification.approved\"], \"is_active\": true}"}, "url": {"raw": "{{base_url}}/webhooks/{{webhook_id}}", "host": ["{{base_url}}"], "path": ["webhooks", "{{webhook_id}}"]}}
+        },
+        {
+          "name": "Delete Webhook",
+          "request": {"method": "DELETE", "header": [{"key": "Authorization", "value": "Bearer {{jwt_token}}"}], "url": {"raw": "{{base_url}}/webhooks/{{webhook_id}}", "host": ["{{base_url}}"], "path": ["webhooks", "{{webhook_id}}"]}}
+        }
+      ]
+    },
+    {
+      "name": "10. Audit Logs",
+      "item": [
+        {
+          "name": "List Audit Logs (paginated)",
+          "event": [{"listen": "test", "script": {"exec": ["pm.test('Has entries', () => pm.expect(pm.response.json().total).to.be.above(0));"]}}],
+          "request": {"method": "GET", "header": [{"key": "Authorization", "value": "Bearer {{jwt_token}}"}], "url": {"raw": "{{base_url}}/audit-logs?page=1&page_size=25", "host": ["{{base_url}}"], "path": ["audit-logs"], "query": [{"key": "page", "value": "1"}, {"key": "page_size", "value": "25"}]}}
+        },
+        {
+          "name": "Filter Audit Logs by action",
+          "request": {"method": "GET", "header": [{"key": "Authorization", "value": "Bearer {{jwt_token}}"}], "url": {"raw": "{{base_url}}/audit-logs?action=verification.created&page_size=10", "host": ["{{base_url}}"], "path": ["audit-logs"], "query": [{"key": "action", "value": "verification.created"}, {"key": "page_size", "value": "10"}]}}
+        },
+        {
+          "name": "Filter Audit Logs by resource",
+          "request": {"method": "GET", "header": [{"key": "Authorization", "value": "Bearer {{jwt_token}}"}], "url": {"raw": "{{base_url}}/audit-logs?resource_type=applicant&page_size=10", "host": ["{{base_url}}"], "path": ["audit-logs"], "query": [{"key": "resource_type", "value": "applicant"}, {"key": "page_size", "value": "10"}]}}
+        }
+      ]
+    },
+    {
+      "name": "11. System",
+      "item": [
+        {
+          "name": "Health Check",
+          "event": [{"listen": "test", "script": {"exec": ["pm.test('OK', () => pm.expect(pm.response.json().status).to.eql('ok'));"]}}],
+          "request": {"method": "GET", "url": {"raw": "http://localhost:8000/health", "host": ["http://localhost:8000"], "path": ["health"]}}
+        },
+        {
+          "name": "Root Info",
+          "request": {"method": "GET", "url": {"raw": "http://localhost:8000/", "host": ["http://localhost:8000"], "path": [""]}}
+        }
+      ]
+    }
+  ]
+}
