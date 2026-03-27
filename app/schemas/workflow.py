@@ -52,6 +52,7 @@ class WorkflowOut(BaseModel):
     description: Optional[str]
     status: str
     version: int
+    short_code: str  # 6-digit org-unique code for integrators / support
     published_at: Optional[datetime]
     created_at: datetime
     updated_at: datetime
@@ -67,6 +68,7 @@ class WorkflowListOut(BaseModel):
     description: Optional[str]
     status: str
     version: int
+    short_code: str
     step_count: int = 0
     published_at: Optional[datetime]
     created_at: datetime

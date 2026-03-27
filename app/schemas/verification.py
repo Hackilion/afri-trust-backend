@@ -2,12 +2,29 @@ from datetime import datetime
 from typing import Any, Optional
 from uuid import UUID
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, field_validator, model_validator
 
 
 class VerificationCreate(BaseModel):
     applicant_id: UUID
-    workflow_id: UUID
+    workflow_id: Optional[UUID] = None
+    workflow_code: Optional[str] = None
+
+    @model_validator(mode="after")
+    def exactly_one_workflow_ref(self) -> "VerificationCreate":
+        has_uuid = self.workflow_id is not None
+        raw = self.workflow_code
+        code = raw.strip() if isinstance(raw, str) else ""
+        has_code = len(code) > 0
+        if has_uuid == has_code:
+            raise ValueError(
+                "Provide exactly one of workflow_id (UUID) or workflow_code (6 digits)"
+            )
+        if has_code:
+            if len(code) != 6 or not code.isdigit():
+                raise ValueError("workflow_code must be exactly 6 digits")
+            self.workflow_code = code
+        return self
 
 
 class VerificationOut(BaseModel):

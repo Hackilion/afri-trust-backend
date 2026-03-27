@@ -33,6 +33,13 @@ class Settings(BaseSettings):
     PUBLIC_APP_URL: str = "http://localhost:5173"
     EMAIL_VERIFY_OTP_TTL_MINUTES: int = 30
 
+    # Dashboard assistant: OpenRouter OpenAI-compatible API (server-side key; not exposed to the browser).
+    OPENROUTER_API_KEY: Optional[str] = None
+    OPENROUTER_MODEL: str = "openai/gpt-4o-mini"
+    OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1"
+    # Optional; defaults to PUBLIC_APP_URL. OpenRouter recommends HTTP-Referer for rankings.
+    OPENROUTER_HTTP_REFERER: Optional[str] = None
+
     model_config = SettingsConfigDict(env_file=".env", case_sensitive=True, extra="ignore")
 
 

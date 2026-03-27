@@ -125,7 +125,21 @@
     }
 
     createApplicant(info)          { return this._req("POST", "/v1/applicants", info); }
-    startSession(applicantId, wfId){ return this._req("POST", "/v1/verifications", { applicant_id: applicantId, workflow_id: wfId }); }
+    startSession(applicantId, wfRef) {
+      const ref = String(wfRef || "").trim();
+      const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+      const body = { applicant_id: applicantId };
+      if (uuidRe.test(ref)) {
+        body.workflow_id = ref;
+      } else {
+        const digits = ref.replace(/\D/g, "");
+        if (!digits.length) throw { detail: "workflowId must be a UUID or 6-digit workflow code" };
+        const code = digits.length <= 6 ? digits.padStart(6, "0") : digits.slice(-6);
+        if (!/^\d{6}$/.test(code)) throw { detail: "Invalid workflow code" };
+        body.workflow_code = code;
+      }
+      return this._req("POST", "/v1/verifications", body);
+    }
     getRequiredData(sessionId)     { return this._req("GET",  `/v1/verifications/${sessionId}/required-data`); }
     getSession(sessionId)          { return this._req("GET",  `/v1/verifications/${sessionId}`); }
     submitAttributes(sessionId, a) { return this._req("POST", `/v1/verifications/${sessionId}/attributes`, { attributes: a }); }
@@ -401,6 +415,37 @@
           ${details ? `<p style="margin-top:12px;font-size:12px;color:#9ca3af;">${this._esc(JSON.stringify(details))}</p>` : ""}
         </div>`;
     }
+
+    renderManualReview(session) {
+      const body = this.root.querySelector(".at-body");
+      const st = session && session.status ? session.status : "";
+      body.innerHTML = `
+        <div class="at-status">
+          <div class="icon">&#128203;</div>
+          <h3>With our review team</h3>
+          <p>Automated checks are done. A compliance analyst is reviewing your case. You can leave this page &mdash; we will notify you when there is a decision.</p>
+          <p style="margin-top:14px;font-size:12px;color:#64748b;">Status: <strong>${this._esc(st)}</strong></p>
+        </div>`;
+    }
+
+    renderFailedChecks(failedList, rd) {
+      const tier = rd && rd.tier_profile_name ? this._esc(rd.tier_profile_name) : "this step";
+      const items = (failedList || []).map((f) => `<li style="margin:4px 0;">${this._esc(f)}</li>`).join("");
+      const body = this.root.querySelector(".at-body");
+      body.innerHTML = `
+        <div class="at-alert at-alert-error" style="margin-bottom:12px;">
+          Some checks did not pass for ${tier}. Contact the organisation that sent you this link if you need help.
+        </div>
+        <ul style="font-size:13px;color:#374151;padding-left:20px;">${items || "<li>(no detail)</li>"}</ul>`;
+    }
+
+    renderDocTierMisconfig() {
+      const body = this.root.querySelector(".at-body");
+      body.innerHTML = `
+        <div class="at-alert at-alert-error">
+          This step requires a document upload, but the verification tier has no accepted document types configured. Please contact support.
+        </div>`;
+    }
   }
 
   /* ------------------------------------------------------------------ */
@@ -462,7 +507,13 @@
 
         if (rd.complete) {
           const session = await this.api.getSession(this.sessionId);
-          this.renderer.renderProgress(session.current_step_order, session.current_step_order, "Complete");
+          const total = session.steps ? session.steps.length : session.current_step_order;
+          this.renderer.renderProgress(session.current_step_order, total, "Complete");
+          if (session.status === "awaiting_review") {
+            this.renderer.renderManualReview(session);
+            this._cb("onStepChange", { event: "awaiting_review", sessionId: this.sessionId, status: session.status });
+            return;
+          }
           this.renderer.renderResult(session.result, session.result_details);
           this._cb("onComplete", { result: session.result, sessionId: this.sessionId, details: session.result_details });
           return;
@@ -476,6 +527,19 @@
         if (session.status === "approved" || session.status === "rejected") {
           this.renderer.renderResult(session.result, session.result_details);
           this._cb("onComplete", { result: session.result, sessionId: this.sessionId });
+          return;
+        }
+
+        if (session.status === "awaiting_review") {
+          this.renderer.renderManualReview(session);
+          this._cb("onStepChange", { event: "awaiting_review", sessionId: this.sessionId, status: session.status });
+          return;
+        }
+
+        const failedChecks = (rd.checks && rd.checks.failed) ? rd.checks.failed : [];
+        if (failedChecks.length > 0) {
+          this.renderer.renderFailedChecks(failedChecks, rd);
+          this._cb("onStepChange", { event: "checks_failed", failed: failedChecks });
           return;
         }
 
@@ -503,6 +567,11 @@
         }
 
         const needsDoc = pendingChecks.some(c => ["government_id", "address_proof"].includes(c));
+        if (needsDoc && acceptedDocs.length === 0) {
+          this.currentPhase = "document_misconfig";
+          this.renderer.renderDocTierMisconfig();
+          return;
+        }
         if (needsDoc && acceptedDocs.length > 0) {
           this.currentPhase = "document";
           this.renderer.renderDocumentUpload(acceptedDocs, async (type, file) => {
@@ -524,9 +593,16 @@
         const needsSelfie = pendingChecks.some(c => ["selfie", "face_match", "liveness"].includes(c));
         if (needsSelfie) {
           this.currentPhase = "selfie";
-          const label = pendingChecks.includes("face_match")
-            ? "Take a selfie for face matching"
-            : "Take a selfie for liveness verification";
+          let label = "Take a photo for identity verification";
+          if (pendingChecks.includes("face_match") && pendingChecks.includes("liveness")) {
+            label = "Selfie for face match and liveness";
+          } else if (pendingChecks.includes("face_match")) {
+            label = "Take a selfie to match your ID photo";
+          } else if (pendingChecks.includes("liveness")) {
+            label = "Liveness check — look at the camera";
+          } else if (pendingChecks.includes("selfie")) {
+            label = "Take a selfie for your verification";
+          }
           this.renderer.renderSelfieCapture(label, async (blob) => {
             try {
               await this.api.uploadSelfie(this.sessionId, blob);
