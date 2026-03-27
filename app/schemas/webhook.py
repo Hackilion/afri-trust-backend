@@ -28,6 +28,13 @@ class WebhookOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class WebhookListOut(WebhookOut):
+    """List view with delivery stats (not stored on subscription row)."""
+
+    failure_count: int = 0
+    last_delivery_at: Optional[datetime] = None
+
+
 class WebhookCreateResponse(BaseModel):
     id: UUID
     url: str

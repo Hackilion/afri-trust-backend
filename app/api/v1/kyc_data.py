@@ -252,6 +252,7 @@ async def get_kyc_summary(
         session_summaries.append(
             KycSessionSummary(
                 session_id=session.id,
+                workflow_id=session.workflow_id,
                 workflow_name=session.workflow.name if session.workflow else None,
                 status=session.status,
                 result=session.result,

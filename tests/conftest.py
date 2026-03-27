@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from app.db.base import Base
 from app.db.session import get_db
 from app.main import app
+from starlette.testclient import TestClient
 
 TEST_DATABASE_URL = os.getenv(
     "TEST_DATABASE_URL",
@@ -60,4 +61,22 @@ async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac
+    app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def test_app_client(db_session: AsyncSession):
+    """Synchronous TestClient with the same DB override as `client` (for WebSockets)."""
+
+    async def _override_get_db():
+        try:
+            yield db_session
+            await db_session.commit()
+        except Exception:
+            await db_session.rollback()
+            raise
+
+    app.dependency_overrides[get_db] = _override_get_db
+    with TestClient(app) as tc:
+        yield tc
     app.dependency_overrides.clear()

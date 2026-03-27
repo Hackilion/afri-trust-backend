@@ -1,8 +1,9 @@
 import secrets
+from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Request
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import AuthContext, get_client_ip, require_jwt, require_role
@@ -14,10 +15,11 @@ from app.schemas.webhook import (
     WebhookCreate,
     WebhookCreateResponse,
     WebhookDeliveryOut,
+    WebhookListOut,
     WebhookOut,
     WebhookUpdate,
 )
-from app.services import audit_service
+from app.services import audit_service, webhook_dispatcher
 
 router = APIRouter(prefix="/webhooks", tags=["Webhooks"])
 
@@ -60,16 +62,57 @@ async def create_webhook(
     )
 
 
-@router.get("", response_model=list[WebhookOut])
+@router.get("", response_model=list[WebhookListOut])
 async def list_webhooks(
     auth: AuthContext = Depends(require_jwt),
     db: AsyncSession = Depends(get_db),
 ):
-    stmt = select(WebhookSubscription).where(
-        WebhookSubscription.org_id == auth.org_id
-    ).order_by(WebhookSubscription.created_at.desc())
+    stmt = (
+        select(WebhookSubscription)
+        .where(WebhookSubscription.org_id == auth.org_id)
+        .order_by(WebhookSubscription.created_at.desc())
+    )
     result = await db.execute(stmt)
-    return result.scalars().all()
+    subs = list(result.scalars().all())
+    ids = [s.id for s in subs]
+    fail_map: dict[UUID, int] = {}
+    last_map: dict[UUID, datetime] = {}
+    if ids:
+        fail_rows = await db.execute(
+            select(WebhookDelivery.subscription_id, func.count())
+            .where(
+                WebhookDelivery.subscription_id.in_(ids),
+                WebhookDelivery.status == "failed",
+            )
+            .group_by(WebhookDelivery.subscription_id)
+        )
+        for sid, cnt in fail_rows.all():
+            fail_map[sid] = int(cnt)
+        last_rows = await db.execute(
+            select(
+                WebhookDelivery.subscription_id,
+                func.max(WebhookDelivery.created_at),
+            )
+            .where(WebhookDelivery.subscription_id.in_(ids))
+            .group_by(WebhookDelivery.subscription_id)
+        )
+        for sid, ts in last_rows.all():
+            if ts is not None:
+                last_map[sid] = ts
+    return [
+        WebhookListOut(
+            id=s.id,
+            org_id=s.org_id,
+            url=s.url,
+            event_types=s.event_types or [],
+            is_active=s.is_active,
+            created_at=s.created_at,
+            updated_at=s.updated_at,
+            failure_count=fail_map.get(s.id, 0),
+            last_delivery_at=last_map.get(s.id),
+        )
+        for s in subs
+    ]
 
 
 @router.put("/{webhook_id}", response_model=WebhookOut)
@@ -171,13 +214,18 @@ async def test_webhook(
     if not sub:
         raise NotFoundError("Webhook not found")
 
+    now = datetime.now(timezone.utc)
     delivery = WebhookDelivery(
         subscription_id=sub.id,
         event_type="test.ping",
         payload={"message": "This is a test event from AfriTrust"},
         status="pending",
+        attempts=0,
+        next_attempt_at=now,
     )
     db.add(delivery)
     await db.flush()
+    await webhook_dispatcher.process_pending_deliveries(db)
+    await db.flush()
 
-    return StatusMessage(detail="Test event queued for delivery")
+    return StatusMessage(detail="Test webhook processed")

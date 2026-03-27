@@ -326,17 +326,22 @@ async def remove_step(
     if not step:
         raise NotFoundError("Step not found")
 
-    removed_order = step.step_order
     await db.delete(step)
     await db.flush()
 
-    remaining = await db.execute(
+    # Two-phase renumber so (workflow_id, step_order) stays unique under SQLite while updating.
+    remaining_result = await db.execute(
         select(WorkflowStep)
-        .where(WorkflowStep.workflow_id == wf_id, WorkflowStep.step_order > removed_order)
+        .where(WorkflowStep.workflow_id == wf_id)
         .order_by(WorkflowStep.step_order)
     )
-    for s in remaining.scalars().all():
-        s.step_order -= 1
+    remaining = list(remaining_result.scalars().all())
+    tmp_base = 1_000_000
+    for i, s in enumerate(remaining):
+        s.step_order = tmp_base + i
+    await db.flush()
+    for i, s in enumerate(remaining, start=1):
+        s.step_order = i
     await db.flush()
 
     return StatusMessage(detail="Step removed")

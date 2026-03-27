@@ -1,0 +1,6 @@
+# Install deps from requirements.txt. This file configures Pyright / Pylance import resolution.
+[tool.pyright]
+include = ["app"]
+venvPath = "."
+venv = ".venv"
+pythonVersion = "3.13"

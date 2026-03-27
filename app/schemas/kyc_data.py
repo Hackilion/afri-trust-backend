@@ -18,6 +18,7 @@ class KycSummaryOut(BaseModel):
 
 class KycSessionSummary(BaseModel):
     session_id: UUID
+    workflow_id: UUID
     workflow_name: Optional[str]
     status: str
     result: str
