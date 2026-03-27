@@ -1,8 +1,12 @@
 import logging
 import sys
 
+from pathlib import Path
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.core.config import settings
 
@@ -65,6 +69,15 @@ app.include_router(consent.router, prefix=PREFIX)
 app.include_router(webhooks.router, prefix=PREFIX)
 app.include_router(audit_logs.router, prefix=PREFIX)
 app.include_router(dashboard.router, prefix=PREFIX)
+
+
+SDK_DIR = Path(__file__).parent / "sdk"
+app.mount("/sdk", StaticFiles(directory=str(SDK_DIR)), name="sdk")
+
+
+@app.get("/verify", response_class=HTMLResponse)
+def sdk_demo():
+    return (SDK_DIR / "demo.html").read_text()
 
 
 @app.get("/health")

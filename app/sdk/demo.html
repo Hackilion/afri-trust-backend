@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AfriTrust SDK Demo</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #f1f5f9;
+      color: #1e293b;
+      min-height: 100vh;
+    }
+
+    .demo-header {
+      background: linear-gradient(135deg, #0f3460 0%, #16213e 100%);
+      color: #fff;
+      padding: 32px 24px;
+      text-align: center;
+    }
+    .demo-header h1 { font-size: 24px; margin-bottom: 6px; }
+    .demo-header p  { font-size: 14px; opacity: .8; }
+
+    .demo-layout {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 32px 16px;
+      display: grid;
+      grid-template-columns: 380px 1fr;
+      gap: 24px;
+    }
+    @media (max-width: 800px) {
+      .demo-layout { grid-template-columns: 1fr; }
+    }
+
+    .config-panel {
+      background: #fff;
+      border-radius: 12px;
+      padding: 24px;
+      box-shadow: 0 2px 12px rgba(0,0,0,.06);
+      height: fit-content;
+      position: sticky;
+      top: 24px;
+    }
+    .config-panel h2 { font-size: 16px; margin-bottom: 16px; color: #0f3460; }
+    .config-panel label { display: block; font-size: 13px; font-weight: 500; margin-bottom: 4px; color: #475569; }
+    .config-panel input, .config-panel textarea {
+      width: 100%; padding: 10px 12px; border: 1px solid #d1d5db; border-radius: 8px;
+      font-size: 13px; margin-bottom: 14px; font-family: inherit; outline: none;
+    }
+    .config-panel input:focus, .config-panel textarea:focus { border-color: #3b82f6; }
+    .config-panel textarea { height: 80px; resize: vertical; }
+
+    .launch-btn {
+      width: 100%; padding: 12px; background: #3b82f6; color: #fff; border: none;
+      border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer;
+      transition: background .2s;
+    }
+    .launch-btn:hover { background: #2563eb; }
+    .launch-btn:disabled { opacity: .5; cursor: not-allowed; }
+
+    .sdk-panel {
+      min-height: 400px;
+    }
+
+    .placeholder {
+      background: #fff;
+      border: 2px dashed #d1d5db;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 400px;
+      color: #94a3b8;
+      font-size: 14px;
+      text-align: center;
+      padding: 24px;
+    }
+
+    .event-log {
+      margin-top: 24px;
+      background: #fff;
+      border-radius: 12px;
+      padding: 16px 20px;
+      box-shadow: 0 2px 12px rgba(0,0,0,.06);
+    }
+    .event-log h3 { font-size: 14px; color: #475569; margin-bottom: 10px; }
+    .event-log pre {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 12px;
+      font-size: 12px;
+      max-height: 240px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+
+    .instructions {
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+      border-radius: 8px;
+      padding: 14px;
+      margin-bottom: 16px;
+      font-size: 12px;
+      line-height: 1.6;
+      color: #1e40af;
+    }
+    .instructions code { background: #dbeafe; padding: 1px 5px; border-radius: 3px; font-size: 11px; }
+  </style>
+</head>
+<body>
+
+  <div class="demo-header">
+    <h1>AfriTrust Web SDK Demo</h1>
+    <p>Test the embeddable identity verification flow</p>
+  </div>
+
+  <div class="demo-layout">
+    <div class="config-panel">
+      <h2>Configuration</h2>
+
+      <div class="instructions">
+        <strong>How to test:</strong><br>
+        1. Register an org and get an API key from <code>/docs</code><br>
+        2. Create tier profiles and a workflow<br>
+        3. Publish the workflow<br>
+        4. Paste the API key and Workflow ID below<br>
+        5. Click "Launch Verification"
+      </div>
+
+      <label for="api-key">API Key</label>
+      <input type="text" id="api-key" placeholder="Paste your API key here">
+
+      <label for="api-url">API Base URL</label>
+      <input type="text" id="api-url" value="http://localhost:8000">
+
+      <label for="workflow-id">Workflow ID (UUID)</label>
+      <input type="text" id="workflow-id" placeholder="Published workflow UUID">
+
+      <label for="applicant-json">Applicant Info (JSON)</label>
+      <textarea id="applicant-json">{
+  "external_id": "demo-user-1",
+  "email": "demo@example.com",
+  "phone": "+251911000000",
+  "full_name": "Demo User"
+}</textarea>
+
+      <button class="launch-btn" id="launch-btn" onclick="launchSDK()">Launch Verification</button>
+    </div>
+
+    <div class="sdk-panel">
+      <div id="kyc-container">
+        <div class="placeholder">
+          The verification widget will appear here.<br>Configure and click "Launch Verification" to start.
+        </div>
+      </div>
+
+      <div class="event-log">
+        <h3>SDK Event Log</h3>
+        <pre id="event-log">Waiting for SDK to start...\n</pre>
+      </div>
+    </div>
+  </div>
+
+  <script src="/sdk/afritrust.js"></script>
+  <script>
+    function log(msg) {
+      const el = document.getElementById("event-log");
+      const ts = new Date().toLocaleTimeString();
+      el.textContent += `[${ts}] ${typeof msg === "string" ? msg : JSON.stringify(msg, null, 2)}\n`;
+      el.scrollTop = el.scrollHeight;
+    }
+
+    function launchSDK() {
+      const apiKey = document.getElementById("api-key").value.trim();
+      const baseUrl = document.getElementById("api-url").value.trim();
+      const workflowId = document.getElementById("workflow-id").value.trim();
+      let applicant;
+
+      try {
+        applicant = JSON.parse(document.getElementById("applicant-json").value);
+      } catch (e) {
+        alert("Invalid applicant JSON: " + e.message);
+        return;
+      }
+
+      if (!apiKey || !workflowId) {
+        alert("Please fill in API Key and Workflow ID");
+        return;
+      }
+
+      const container = document.getElementById("kyc-container");
+      container.innerHTML = "";
+
+      const div = document.createElement("div");
+      div.id = "kyc-widget";
+      container.appendChild(div);
+
+      log("Starting SDK...");
+      log({ apiKey: apiKey.substring(0, 12) + "...", workflowId, applicant });
+
+      AfriTrust.start({
+        apiKey: apiKey,
+        baseUrl: baseUrl,
+        containerId: "kyc-widget",
+        workflowId: workflowId,
+        applicant: applicant,
+        onComplete: (result) => {
+          log("COMPLETE: " + JSON.stringify(result));
+        },
+        onError: (err) => {
+          log("ERROR: " + JSON.stringify(err));
+        },
+        onStepChange: (step) => {
+          log("STEP: " + JSON.stringify(step));
+        }
+      });
+
+      document.getElementById("launch-btn").disabled = true;
+      document.getElementById("launch-btn").textContent = "Running...";
+    }
+  </script>
+</body>
+</html>
