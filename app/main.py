@@ -21,6 +21,16 @@ app = FastAPI(
     redoc_url="/redoc",
 )
 
+
+@app.on_event("startup")
+async def _create_tables():
+    from app.db.base import Base
+    from app.db.session import engine
+    import app.models  # noqa: F401
+
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],

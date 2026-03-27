@@ -1,7 +1,7 @@
 import uuid
 
 from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Index, Integer, String, Text
-from sqlalchemy.dialects.postgresql import JSON, UUID
+from app.db.types import GUID, JSON
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
@@ -11,9 +11,9 @@ from app.db.base import Base
 class WebhookSubscription(Base):
     __tablename__ = "webhook_subscriptions"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(GUID, primary_key=True, default=uuid.uuid4)
     org_id = Column(
-        UUID(as_uuid=True),
+        GUID,
         ForeignKey("organizations.id", ondelete="CASCADE"),
         nullable=False,
     )
@@ -42,9 +42,9 @@ class WebhookSubscription(Base):
 class WebhookDelivery(Base):
     __tablename__ = "webhook_deliveries"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(GUID, primary_key=True, default=uuid.uuid4)
     subscription_id = Column(
-        UUID(as_uuid=True),
+        GUID,
         ForeignKey("webhook_subscriptions.id", ondelete="CASCADE"),
         nullable=False,
     )

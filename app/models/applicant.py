@@ -1,7 +1,7 @@
 import uuid
 
 from sqlalchemy import Column, DateTime, ForeignKey, Index, String, UniqueConstraint
-from sqlalchemy.dialects.postgresql import JSON, UUID
+from app.db.types import GUID, JSON
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
@@ -11,9 +11,9 @@ from app.db.base import Base
 class Applicant(Base):
     __tablename__ = "applicants"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(GUID, primary_key=True, default=uuid.uuid4)
     org_id = Column(
-        UUID(as_uuid=True),
+        GUID,
         ForeignKey("organizations.id", ondelete="CASCADE"),
         nullable=False,
     )

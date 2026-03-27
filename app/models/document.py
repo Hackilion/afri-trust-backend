@@ -1,7 +1,7 @@
 import uuid
 
 from sqlalchemy import Column, DateTime, Float, ForeignKey, String, Text
-from sqlalchemy.dialects.postgresql import JSON, UUID
+from app.db.types import GUID, JSON
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
@@ -11,14 +11,14 @@ from app.db.base import Base
 class DocumentArtifact(Base):
     __tablename__ = "document_artifacts"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(GUID, primary_key=True, default=uuid.uuid4)
     session_id = Column(
-        UUID(as_uuid=True),
+        GUID,
         ForeignKey("verification_sessions.id", ondelete="CASCADE"),
         nullable=False,
     )
     step_progress_id = Column(
-        UUID(as_uuid=True),
+        GUID,
         ForeignKey("step_progress.id", ondelete="CASCADE"),
         nullable=False,
     )
@@ -44,9 +44,9 @@ class DocumentArtifact(Base):
 class ExtractedIdentity(Base):
     __tablename__ = "extracted_identities"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(GUID, primary_key=True, default=uuid.uuid4)
     document_artifact_id = Column(
-        UUID(as_uuid=True),
+        GUID,
         ForeignKey("document_artifacts.id", ondelete="CASCADE"),
         nullable=False,
         unique=True,

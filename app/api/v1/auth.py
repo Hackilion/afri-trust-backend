@@ -2,6 +2,7 @@ import logging
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import BadRequestError, ConflictError, UnauthorizedError
@@ -58,7 +59,11 @@ async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)):
         email_verify_token=token,
     )
     db.add(user)
-    await db.flush()
+    try:
+        await db.flush()
+    except IntegrityError:
+        await db.rollback()
+        raise ConflictError("Email already registered")
 
     return RegisterResponse(
         org_id=org.id,

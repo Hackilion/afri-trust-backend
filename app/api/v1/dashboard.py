@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import case, cast, Date, Float, func, select, extract
+from sqlalchemy import case, cast, Float, String, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import AuthContext, require_jwt
@@ -76,23 +76,25 @@ async def get_dashboard_stats(
         round(approved_30d / completed_30d * 100, 1) if completed_30d else None
     )
 
-    avg_time = (
+    completed_sessions = (
         await db.execute(
             select(
-                func.avg(
-                    extract(
-                        "epoch",
-                        VerificationSession.completed_at
-                        - VerificationSession.started_at,
-                    )
-                )
+                VerificationSession.started_at,
+                VerificationSession.completed_at,
             ).where(
                 VerificationSession.org_id == org_id,
                 VerificationSession.completed_at.isnot(None),
                 VerificationSession.started_at.isnot(None),
             )
         )
-    ).scalar()
+    ).all()
+    if completed_sessions:
+        deltas = [
+            (row[1] - row[0]).total_seconds() for row in completed_sessions
+        ]
+        avg_time = sum(deltas) / len(deltas)
+    else:
+        avg_time = None
 
     status_rows = (
         await db.execute(
@@ -153,10 +155,11 @@ async def get_timeseries(
     org_id = auth.org_id
     start = datetime.now(timezone.utc) - timedelta(days=days)
 
+    day_col = func.date(VerificationSession.created_at).label("day")
     rows = (
         await db.execute(
             select(
-                cast(VerificationSession.created_at, Date).label("day"),
+                day_col,
                 VerificationSession.result,
                 func.count().label("count"),
             )
@@ -164,8 +167,8 @@ async def get_timeseries(
                 VerificationSession.org_id == org_id,
                 VerificationSession.created_at >= start,
             )
-            .group_by("day", VerificationSession.result)
-            .order_by("day")
+            .group_by(day_col, VerificationSession.result)
+            .order_by(day_col)
         )
     ).all()
 

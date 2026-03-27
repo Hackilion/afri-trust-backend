@@ -1,7 +1,7 @@
 import uuid
 
 from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Index, String, Text
-from sqlalchemy.dialects.postgresql import JSON, UUID
+from app.db.types import GUID, JSON
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
@@ -29,9 +29,9 @@ class TierProfile(Base):
 
     __tablename__ = "tier_profiles"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(GUID, primary_key=True, default=uuid.uuid4)
     org_id = Column(
-        UUID(as_uuid=True),
+        GUID,
         ForeignKey("organizations.id", ondelete="CASCADE"),
         nullable=False,
     )

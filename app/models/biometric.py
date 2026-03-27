@@ -1,7 +1,7 @@
 import uuid
 
 from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, String
-from sqlalchemy.dialects.postgresql import JSON, UUID
+from app.db.types import GUID, JSON
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
@@ -11,14 +11,14 @@ from app.db.base import Base
 class BiometricResult(Base):
     __tablename__ = "biometric_results"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(GUID, primary_key=True, default=uuid.uuid4)
     session_id = Column(
-        UUID(as_uuid=True),
+        GUID,
         ForeignKey("verification_sessions.id", ondelete="CASCADE"),
         nullable=False,
     )
     step_progress_id = Column(
-        UUID(as_uuid=True),
+        GUID,
         ForeignKey("step_progress.id", ondelete="CASCADE"),
         nullable=False,
     )

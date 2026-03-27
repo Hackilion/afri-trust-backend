@@ -8,7 +8,7 @@ class Settings(BaseSettings):
     VERSION: str = "0.1.0"
     API_V1_PREFIX: str = "/v1"
 
-    DATABASE_URL: str = "postgresql+asyncpg://afritrust:afritrust@localhost:5432/afritrust"
+    DATABASE_URL: str = "sqlite+aiosqlite:///./afritrust.db"
     DATABASE_SSL: bool = False
 
     JWT_SECRET_KEY: str = "CHANGE-ME-IN-PRODUCTION"

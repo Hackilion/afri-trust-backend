@@ -1,7 +1,7 @@
 import uuid
 
 from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Index, String
-from sqlalchemy.dialects.postgresql import JSON, UUID
+from app.db.types import GUID, JSON
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
@@ -11,7 +11,7 @@ from app.db.base import Base
 class Organization(Base):
     __tablename__ = "organizations"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(GUID, primary_key=True, default=uuid.uuid4)
     name = Column(String(255), nullable=False)
     legal_name = Column(String(255), nullable=True)
     country = Column(String(3), nullable=True)
@@ -35,9 +35,9 @@ class Organization(Base):
 class OrgUser(Base):
     __tablename__ = "org_users"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(GUID, primary_key=True, default=uuid.uuid4)
     org_id = Column(
-        UUID(as_uuid=True),
+        GUID,
         ForeignKey("organizations.id", ondelete="CASCADE"),
         nullable=False,
     )
@@ -62,9 +62,9 @@ class OrgUser(Base):
 class ApiKey(Base):
     __tablename__ = "api_keys"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(GUID, primary_key=True, default=uuid.uuid4)
     org_id = Column(
-        UUID(as_uuid=True),
+        GUID,
         ForeignKey("organizations.id", ondelete="CASCADE"),
         nullable=False,
     )

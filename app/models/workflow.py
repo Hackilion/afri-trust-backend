@@ -11,7 +11,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
-from sqlalchemy.dialects.postgresql import UUID
+from app.db.types import GUID
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
@@ -21,9 +21,9 @@ from app.db.base import Base
 class Workflow(Base):
     __tablename__ = "workflows"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(GUID, primary_key=True, default=uuid.uuid4)
     org_id = Column(
-        UUID(as_uuid=True),
+        GUID,
         ForeignKey("organizations.id", ondelete="CASCADE"),
         nullable=False,
     )
@@ -58,14 +58,14 @@ class Workflow(Base):
 class WorkflowStep(Base):
     __tablename__ = "workflow_steps"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(GUID, primary_key=True, default=uuid.uuid4)
     workflow_id = Column(
-        UUID(as_uuid=True),
+        GUID,
         ForeignKey("workflows.id", ondelete="CASCADE"),
         nullable=False,
     )
     tier_profile_id = Column(
-        UUID(as_uuid=True),
+        GUID,
         ForeignKey("tier_profiles.id", ondelete="RESTRICT"),
         nullable=False,
     )

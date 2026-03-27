@@ -1,7 +1,7 @@
 import uuid
 
 from sqlalchemy import Column, DateTime, ForeignKey, String
-from sqlalchemy.dialects.postgresql import JSON, UUID
+from app.db.types import GUID, JSON
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
@@ -11,19 +11,19 @@ from app.db.base import Base
 class ConsentGrant(Base):
     __tablename__ = "consent_grants"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(GUID, primary_key=True, default=uuid.uuid4)
     applicant_id = Column(
-        UUID(as_uuid=True),
+        GUID,
         ForeignKey("applicants.id", ondelete="CASCADE"),
         nullable=False,
     )
     org_id = Column(
-        UUID(as_uuid=True),
+        GUID,
         ForeignKey("organizations.id", ondelete="CASCADE"),
         nullable=False,
     )
     session_id = Column(
-        UUID(as_uuid=True),
+        GUID,
         ForeignKey("verification_sessions.id", ondelete="CASCADE"),
         nullable=False,
     )
@@ -41,9 +41,9 @@ class ConsentGrant(Base):
 class VerificationToken(Base):
     __tablename__ = "verification_tokens"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(GUID, primary_key=True, default=uuid.uuid4)
     consent_grant_id = Column(
-        UUID(as_uuid=True),
+        GUID,
         ForeignKey("consent_grants.id", ondelete="CASCADE"),
         nullable=False,
     )

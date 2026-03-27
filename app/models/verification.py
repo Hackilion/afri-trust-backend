@@ -9,7 +9,7 @@ from sqlalchemy import (
     String,
     UniqueConstraint,
 )
-from sqlalchemy.dialects.postgresql import JSON, UUID
+from app.db.types import GUID, JSON
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
@@ -19,19 +19,19 @@ from app.db.base import Base
 class VerificationSession(Base):
     __tablename__ = "verification_sessions"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(GUID, primary_key=True, default=uuid.uuid4)
     org_id = Column(
-        UUID(as_uuid=True),
+        GUID,
         ForeignKey("organizations.id", ondelete="CASCADE"),
         nullable=False,
     )
     applicant_id = Column(
-        UUID(as_uuid=True),
+        GUID,
         ForeignKey("applicants.id", ondelete="CASCADE"),
         nullable=False,
     )
     workflow_id = Column(
-        UUID(as_uuid=True),
+        GUID,
         ForeignKey("workflows.id", ondelete="RESTRICT"),
         nullable=False,
     )
@@ -72,19 +72,19 @@ class VerificationSession(Base):
 class StepProgress(Base):
     __tablename__ = "step_progress"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(GUID, primary_key=True, default=uuid.uuid4)
     session_id = Column(
-        UUID(as_uuid=True),
+        GUID,
         ForeignKey("verification_sessions.id", ondelete="CASCADE"),
         nullable=False,
     )
     workflow_step_id = Column(
-        UUID(as_uuid=True),
+        GUID,
         ForeignKey("workflow_steps.id", ondelete="RESTRICT"),
         nullable=False,
     )
     tier_profile_id = Column(
-        UUID(as_uuid=True),
+        GUID,
         ForeignKey("tier_profiles.id", ondelete="RESTRICT"),
         nullable=False,
     )

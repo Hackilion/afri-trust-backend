@@ -1,6 +1,6 @@
 import hashlib
 from datetime import datetime, timedelta, timezone
-from typing import Any, Optional
+from typing import Optional
 from uuid import UUID
 
 from sqlalchemy import select
@@ -8,6 +8,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import generate_verification_token
 from app.models.consent import ConsentGrant, VerificationToken
+
+
+def _utcnow() -> datetime:
+    return datetime.utcnow()
 
 
 async def create_consent(
@@ -20,7 +24,7 @@ async def create_consent(
     expires_in_days: int = 30,
 ) -> tuple[ConsentGrant, str]:
     """Create a consent grant and return (grant, raw_token)."""
-    expires_at = datetime.now(timezone.utc) + timedelta(days=expires_in_days)
+    expires_at = _utcnow() + timedelta(days=expires_in_days)
 
     grant = ConsentGrant(
         applicant_id=applicant_id,
@@ -60,15 +64,19 @@ async def validate_token(
     if not vt:
         return None
 
-    now = datetime.now(timezone.utc)
-    if vt.expires_at < now:
+    now = _utcnow()
+    expires = vt.expires_at.replace(tzinfo=None) if vt.expires_at and vt.expires_at.tzinfo else vt.expires_at
+    if expires and expires < now:
         return None
 
     stmt2 = select(ConsentGrant).where(ConsentGrant.id == vt.consent_grant_id)
     result2 = await db.execute(stmt2)
     grant = result2.scalar_one_or_none()
 
-    if not grant or grant.revoked_at or grant.expires_at < now:
+    if not grant:
+        return None
+    grant_expires = grant.expires_at.replace(tzinfo=None) if grant.expires_at and grant.expires_at.tzinfo else grant.expires_at
+    if grant.revoked_at or (grant_expires and grant_expires < now):
         return None
 
     vt.used_at = now

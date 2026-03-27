@@ -1,4 +1,3 @@
-import ssl
 from typing import AsyncGenerator
 
 from sqlalchemy.ext.asyncio import (
@@ -6,26 +5,35 @@ from sqlalchemy.ext.asyncio import (
     async_sessionmaker,
     create_async_engine,
 )
+from sqlalchemy.pool import StaticPool
 
 from app.core.config import settings
 
 
 def _build_engine():
-    connect_args: dict = {}
-    if settings.DATABASE_SSL:
-        ssl_ctx = ssl.create_default_context()
-        ssl_ctx.check_hostname = False
-        ssl_ctx.verify_mode = ssl.CERT_NONE
-        connect_args["ssl"] = ssl_ctx
+    url = settings.DATABASE_URL
+    is_sqlite = url.startswith("sqlite")
 
-    return create_async_engine(
-        settings.DATABASE_URL,
-        echo=False,
-        pool_pre_ping=True,
-        pool_size=5,
-        max_overflow=5,
-        connect_args=connect_args,
-    )
+    kwargs: dict = {
+        "echo": False,
+    }
+
+    if is_sqlite:
+        kwargs["connect_args"] = {"check_same_thread": False}
+        kwargs["poolclass"] = StaticPool
+    else:
+        import ssl as _ssl
+
+        kwargs["pool_pre_ping"] = True
+        kwargs["pool_size"] = 5
+        kwargs["max_overflow"] = 5
+        if settings.DATABASE_SSL:
+            ctx = _ssl.create_default_context()
+            ctx.check_hostname = False
+            ctx.verify_mode = _ssl.CERT_NONE
+            kwargs["connect_args"] = {"ssl": ctx}
+
+    return create_async_engine(url, **kwargs)
 
 
 engine = _build_engine()

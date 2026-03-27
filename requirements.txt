@@ -2,7 +2,7 @@ fastapi
 uvicorn[standard]
 sqlalchemy[asyncio]
 alembic
-asyncpg
+aiosqlite
 pydantic-settings
 passlib[bcrypt]
 bcrypt==4.0.1
@@ -10,7 +10,6 @@ python-jose[cryptography]
 python-multipart
 httpx
 email-validator
-psycopg2-binary
 pytesseract
 Pillow
 opencv-python-headless

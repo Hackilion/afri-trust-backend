@@ -1,5 +1,4 @@
 import asyncio
-import ssl
 from logging.config import fileConfig
 
 from alembic import context
@@ -26,30 +25,38 @@ def run_migrations_offline() -> None:
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
+        render_as_batch=True,
     )
     with context.begin_transaction():
         context.run_migrations()
 
 
 def do_run_migrations(connection):
-    context.configure(connection=connection, target_metadata=target_metadata)
+    context.configure(
+        connection=connection,
+        target_metadata=target_metadata,
+        render_as_batch=True,
+    )
     with context.begin_transaction():
         context.run_migrations()
 
 
 async def run_async_migrations() -> None:
-    connect_args: dict = {}
-    if settings.DATABASE_SSL:
-        ssl_ctx = ssl.create_default_context()
-        ssl_ctx.check_hostname = False
-        ssl_ctx.verify_mode = ssl.CERT_NONE
-        connect_args["ssl"] = ssl_ctx
+    url = settings.DATABASE_URL
+    is_sqlite = url.startswith("sqlite")
 
-    connectable = create_async_engine(
-        settings.DATABASE_URL,
-        poolclass=pool.NullPool,
-        connect_args=connect_args,
-    )
+    kwargs: dict = {"poolclass": pool.NullPool}
+    if is_sqlite:
+        kwargs["connect_args"] = {"check_same_thread": False}
+    elif settings.DATABASE_SSL:
+        import ssl
+
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        kwargs["connect_args"] = {"ssl": ctx}
+
+    connectable = create_async_engine(url, **kwargs)
     async with connectable.connect() as connection:
         await connection.run_sync(do_run_migrations)
     await connectable.dispose()
