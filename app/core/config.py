@@ -18,6 +18,9 @@ class Settings(BaseSettings):
 
     API_KEY_PEPPER: str = "CHANGE-ME-pepper"
 
+    CORS_ORIGINS: str = "*"
+    ENVIRONMENT: str = "development"
+
     STORAGE_BACKEND: str = "local"
     UPLOAD_DIR: str = "uploads"
 

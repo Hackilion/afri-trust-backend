@@ -17,12 +17,14 @@ logging.basicConfig(
 )
 logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
 
+is_prod = settings.ENVIRONMENT == "production"
+
 app = FastAPI(
     title=settings.PROJECT_NAME,
     description="Sumsub-style multi-tenant identity verification platform for Africa.",
     version=settings.VERSION,
-    docs_url="/docs",
-    redoc_url="/redoc",
+    docs_url=None if is_prod else "/docs",
+    redoc_url=None if is_prod else "/redoc",
 )
 
 
@@ -37,7 +39,7 @@ async def _create_tables():
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=settings.CORS_ORIGINS.split(","),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

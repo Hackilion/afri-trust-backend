@@ -1,5 +1,6 @@
 fastapi
 uvicorn[standard]
+gunicorn
 sqlalchemy[asyncio]
 alembic
 aiosqlite
@@ -13,5 +14,3 @@ email-validator
 pytesseract
 Pillow
 opencv-python-headless
-deepface
-tf-keras
