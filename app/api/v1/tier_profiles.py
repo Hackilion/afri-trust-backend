@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -66,13 +66,17 @@ async def create_tier_profile(
 @router.get("", response_model=list[TierProfileOut])
 async def list_tier_profiles(
     is_active: bool = True,
+    include_inactive: bool = Query(
+        default=False,
+        description="When true, return active and archived tiers in one response (ignores is_active).",
+    ),
     auth: AuthContext = Depends(require_jwt),
     db: AsyncSession = Depends(get_db),
 ):
-    stmt = select(TierProfile).where(
-        TierProfile.org_id == auth.org_id,
-        TierProfile.is_active == is_active,
-    ).order_by(TierProfile.created_at.desc())
+    stmt = select(TierProfile).where(TierProfile.org_id == auth.org_id)
+    if not include_inactive:
+        stmt = stmt.where(TierProfile.is_active == is_active)
+    stmt = stmt.order_by(TierProfile.created_at.desc())
     result = await db.execute(stmt)
     return result.scalars().all()
 

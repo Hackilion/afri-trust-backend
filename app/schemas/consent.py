@@ -26,3 +26,18 @@ class ConsentGrantOut(BaseModel):
 class IdentityDataOut(BaseModel):
     applicant_id: UUID
     attributes: dict[str, Any]
+
+
+class ConsentGrantListOut(BaseModel):
+    """Org-wide consent row with applicant display name for dashboards."""
+
+    id: UUID
+    applicant_id: UUID
+    applicant_full_name: Optional[str] = None
+    session_id: UUID
+    granted_attributes: list[str]
+    expires_at: datetime
+    revoked_at: Optional[datetime]
+    created_at: datetime
+
+    model_config = {"from_attributes": True}

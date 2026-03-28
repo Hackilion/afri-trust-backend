@@ -12,10 +12,54 @@ from app.models.applicant import Applicant
 from app.models.consent import ConsentGrant
 from app.models.verification import StepProgress, VerificationSession
 from app.schemas.common import StatusMessage
-from app.schemas.consent import ConsentGrantOut, ConsentGrantRequest, IdentityDataOut
+from app.schemas.consent import (
+    ConsentGrantListOut,
+    ConsentGrantOut,
+    ConsentGrantRequest,
+    IdentityDataOut,
+)
 from app.services import audit_service, consent_service
 
 router = APIRouter(tags=["Consent & Identity"])
+
+
+@router.get("/consents", response_model=list[ConsentGrantListOut])
+async def list_org_consents(
+    active_only: bool = Query(False),
+    auth: AuthContext = Depends(require_jwt),
+    db: AsyncSession = Depends(get_db),
+):
+    """All consent grants for the authenticated user's organisation."""
+    now = datetime.now(timezone.utc)
+    stmt = (
+        select(ConsentGrant, Applicant.full_name)
+        .join(Applicant, Applicant.id == ConsentGrant.applicant_id)
+        .where(
+            ConsentGrant.org_id == auth.org_id,
+            Applicant.org_id == auth.org_id,
+        )
+        .order_by(ConsentGrant.created_at.desc())
+    )
+    if active_only:
+        stmt = stmt.where(
+            ConsentGrant.revoked_at.is_(None),
+            ConsentGrant.expires_at > now,
+        )
+    result = await db.execute(stmt)
+    rows = result.all()
+    return [
+        ConsentGrantListOut(
+            id=g.id,
+            applicant_id=g.applicant_id,
+            applicant_full_name=name,
+            session_id=g.session_id,
+            granted_attributes=g.granted_attributes or [],
+            expires_at=g.expires_at,
+            revoked_at=g.revoked_at,
+            created_at=g.created_at,
+        )
+        for g, name in rows
+    ]
 
 
 @router.post(

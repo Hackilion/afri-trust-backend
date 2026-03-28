@@ -8,3 +8,4 @@ from app.models.biometric import BiometricResult  # noqa: F401
 from app.models.consent import ConsentGrant, VerificationToken  # noqa: F401
 from app.models.webhook import WebhookSubscription, WebhookDelivery  # noqa: F401
 from app.models.audit import AuditLog  # noqa: F401
+from app.models.assistant_session import AssistantChatSession  # noqa: F401

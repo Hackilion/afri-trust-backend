@@ -14,7 +14,7 @@ from app.models.applicant import Applicant
 from app.models.verification import VerificationSession
 from app.schemas.applicant import ApplicantCreate, ApplicantOut, ApplicantUpdate
 from app.schemas.common import StatusMessage
-from app.services import audit_service
+from app.services import audit_service, webhook_dispatcher
 
 router = APIRouter(prefix="/applicants", tags=["Applicants"])
 
@@ -60,6 +60,18 @@ async def create_applicant(
         resource_type="applicant",
         resource_id=applicant.id,
         ip_address=get_client_ip(request),
+    )
+
+    await webhook_dispatcher.dispatch_event(
+        db,
+        org_id=auth.org_id,
+        event_type="applicant.created",
+        payload={
+            "applicant_id": str(applicant.id),
+            "external_id": applicant.external_id,
+            "email": applicant.email,
+            "full_name": applicant.full_name,
+        },
     )
 
     return ApplicantOut(
@@ -140,6 +152,16 @@ async def update_applicant(
         ip_address=get_client_ip(request),
     )
 
+    await webhook_dispatcher.dispatch_event(
+        db,
+        org_id=auth.org_id,
+        event_type="applicant.updated",
+        payload={
+            "applicant_id": str(applicant.id),
+            "external_id": applicant.external_id,
+        },
+    )
+
     return ApplicantOut(
         id=applicant.id,
         org_id=applicant.org_id,
@@ -191,6 +213,13 @@ async def delete_applicant(
         resource_type="applicant",
         resource_id=applicant_id,
         ip_address=get_client_ip(request),
+    )
+
+    await webhook_dispatcher.dispatch_event(
+        db,
+        org_id=auth.org_id,
+        event_type="applicant.deleted",
+        payload={"applicant_id": str(applicant_id)},
     )
 
     return StatusMessage(detail="Applicant deleted")

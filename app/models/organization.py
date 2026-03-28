@@ -27,6 +27,7 @@ class Organization(Base):
         onupdate=func.now(),
         nullable=False,
     )
+    settings = Column(JSON, nullable=True)
 
     users = relationship("OrgUser", back_populates="organization", cascade="all, delete-orphan")
     api_keys = relationship("ApiKey", back_populates="organization", cascade="all, delete-orphan")
@@ -46,6 +47,11 @@ class OrgUser(Base):
     role = Column(String(20), nullable=False, default="owner")
     email_verified = Column(Boolean, nullable=False, default=False)
     email_verify_token = Column(String(255), nullable=True)
+    email_verify_otp = Column(String(6), nullable=True)
+    email_verify_otp_expires_at = Column(DateTime(timezone=True), nullable=True)
+    display_name = Column(String(255), nullable=True)
+    invite_token = Column(String(255), nullable=True, unique=True, index=True)
+    invite_expires_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

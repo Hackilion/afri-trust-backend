@@ -23,6 +23,7 @@ from app.schemas.workflow import (
     WorkflowUpdate,
 )
 from app.services import audit_service
+from app.services.workflow_short_code import assign_unique_short_code
 
 router = APIRouter(prefix="/workflows", tags=["Workflows"])
 
@@ -53,6 +54,22 @@ async def _load_workflow(db: AsyncSession, wf_id: UUID, org_id: UUID) -> Workflo
     return wf
 
 
+def _workflow_to_out(wf: Workflow) -> WorkflowOut:
+    return WorkflowOut(
+        id=wf.id,
+        org_id=wf.org_id,
+        name=wf.name,
+        description=wf.description,
+        status=wf.status,
+        version=wf.version,
+        short_code=wf.short_code,
+        published_at=wf.published_at,
+        created_at=wf.created_at,
+        updated_at=wf.updated_at,
+        steps=[_step_to_out(s) for s in sorted(wf.steps, key=lambda s: s.step_order)],
+    )
+
+
 @router.post("", response_model=WorkflowOut, status_code=201)
 async def create_workflow(
     body: WorkflowCreate,
@@ -65,8 +82,11 @@ async def create_workflow(
         name=body.name,
         description=body.description,
         status="draft",
+        short_code="000000",
     )
     db.add(wf)
+    await db.flush()
+    await assign_unique_short_code(db, auth.org_id, wf)
     await db.flush()
 
     await audit_service.log_event(
@@ -80,18 +100,9 @@ async def create_workflow(
         ip_address=get_client_ip(request),
     )
 
-    return WorkflowOut(
-        id=wf.id,
-        org_id=wf.org_id,
-        name=wf.name,
-        description=wf.description,
-        status=wf.status,
-        version=wf.version,
-        published_at=wf.published_at,
-        created_at=wf.created_at,
-        updated_at=wf.updated_at,
-        steps=[],
-    )
+    # Re-load after flush: expired ORM attributes would lazy-load in _workflow_to_out and
+    # raise MissingGreenlet under AsyncSession (sync IO path).
+    return await get_workflow(wf.id, auth, db)
 
 
 @router.get("", response_model=list[WorkflowListOut])
@@ -118,12 +129,36 @@ async def list_workflows(
             description=wf.description,
             status=wf.status,
             version=wf.version,
+            short_code=wf.short_code,
             step_count=len(wf.steps),
             published_at=wf.published_at,
             created_at=wf.created_at,
         )
         for wf in workflows
     ]
+
+
+@router.get("/by-code/{short_code}", response_model=WorkflowOut)
+async def get_workflow_by_short_code(
+    short_code: str,
+    auth: AuthContext = Depends(require_jwt),
+    db: AsyncSession = Depends(get_db),
+):
+    if len(short_code) != 6 or not short_code.isdigit():
+        raise BadRequestError("short_code must be exactly 6 digits")
+    stmt = (
+        select(Workflow)
+        .where(
+            Workflow.org_id == auth.org_id,
+            Workflow.short_code == short_code,
+        )
+        .options(selectinload(Workflow.steps).selectinload(WorkflowStep.tier_profile))
+    )
+    result = await db.execute(stmt)
+    wf = result.scalar_one_or_none()
+    if not wf:
+        raise NotFoundError("Workflow not found for this code")
+    return _workflow_to_out(wf)
 
 
 @router.get("/{wf_id}", response_model=WorkflowOut)
@@ -133,18 +168,7 @@ async def get_workflow(
     db: AsyncSession = Depends(get_db),
 ):
     wf = await _load_workflow(db, wf_id, auth.org_id)
-    return WorkflowOut(
-        id=wf.id,
-        org_id=wf.org_id,
-        name=wf.name,
-        description=wf.description,
-        status=wf.status,
-        version=wf.version,
-        published_at=wf.published_at,
-        created_at=wf.created_at,
-        updated_at=wf.updated_at,
-        steps=[_step_to_out(s) for s in sorted(wf.steps, key=lambda s: s.step_order)],
-    )
+    return _workflow_to_out(wf)
 
 
 @router.put("/{wf_id}", response_model=WorkflowOut)
@@ -326,17 +350,22 @@ async def remove_step(
     if not step:
         raise NotFoundError("Step not found")
 
-    removed_order = step.step_order
     await db.delete(step)
     await db.flush()
 
-    remaining = await db.execute(
+    # Two-phase renumber so (workflow_id, step_order) stays unique under SQLite while updating.
+    remaining_result = await db.execute(
         select(WorkflowStep)
-        .where(WorkflowStep.workflow_id == wf_id, WorkflowStep.step_order > removed_order)
+        .where(WorkflowStep.workflow_id == wf_id)
         .order_by(WorkflowStep.step_order)
     )
-    for s in remaining.scalars().all():
-        s.step_order -= 1
+    remaining = list(remaining_result.scalars().all())
+    tmp_base = 1_000_000
+    for i, s in enumerate(remaining):
+        s.step_order = tmp_base + i
+    await db.flush()
+    for i, s in enumerate(remaining, start=1):
+        s.step_order = i
     await db.flush()
 
     return StatusMessage(detail="Step removed")
@@ -427,8 +456,11 @@ async def clone_workflow(
         name=f"{wf.name} (copy)",
         description=wf.description,
         status="draft",
+        short_code="000000",
     )
     db.add(new_wf)
+    await db.flush()
+    await assign_unique_short_code(db, auth.org_id, new_wf)
     await db.flush()
 
     for step in sorted(wf.steps, key=lambda s: s.step_order):

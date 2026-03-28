@@ -2,6 +2,10 @@
 
 AfriTrust is a multi-tenant identity verification (KYC) platform. Organizations define custom verification workflows, and their client applications verify end-users through document OCR, biometric face matching, and liveness detection — via REST API or an embeddable Web SDK.
 
+## Architecture
+
+For system context, deployment, security model, verification pipeline, Web SDK, logical management portal, and data model (with diagrams), see **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**.
+
 ---
 
 ## Quick Start
