@@ -8,8 +8,8 @@ class Settings(BaseSettings):
     VERSION: str = "0.1.0"
     API_V1_PREFIX: str = "/v1"
 
-    DATABASE_URL: str = "sqlite+aiosqlite:///./afritrust.db"
-    DATABASE_SSL: bool = False
+    DATABASE_URL: str = "DATABASE_URL=postgresql+asyncpg://neondb_owner:npg_FgbcMv2yuLn4@ep-wispy-dawn-amzuljzo-pooler.c-5.us-east-1.aws.neon.tech/neondb"
+    DATABASE_SSL: bool = true
 
     JWT_SECRET_KEY: str = "CHANGE-ME-IN-PRODUCTION"
     JWT_ALGORITHM: str = "HS256"
