@@ -7,6 +7,7 @@ Uses pure OpenCV (no TensorFlow/DeepFace):
 """
 
 import logging
+import mimetypes
 from typing import Any
 from uuid import UUID
 
@@ -14,7 +15,9 @@ import cv2
 import numpy as np
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.models.biometric import BiometricResult
+from app.services import vision_openrouter
 
 logger = logging.getLogger(__name__)
 
@@ -178,16 +181,37 @@ async def run_liveness_check(
     step_progress_id: UUID,
     image_path: str,
 ) -> BiometricResult:
-    result = _liveness_check(image_path)
+    opencv_result = _liveness_check(image_path)
+    combined: dict[str, Any] = {"opencv": opencv_result}
+    passed = bool(opencv_result["passed"])
+    score = float(opencv_result.get("score", 0))
+    model_version = "opencv-heuristic-v2"
+
+    if (settings.OPENROUTER_API_KEY or "").strip():
+        try:
+            with open(image_path, "rb") as f:
+                raw = f.read()
+            mime, _ = mimetypes.guess_type(image_path)
+            mime = mime or "image/jpeg"
+            vout = await vision_openrouter.assess_selfie_liveness_vision(raw, mime)
+            if vout and isinstance(vout.get("live_likely"), bool):
+                combined["vision"] = vout
+                vconf = float(vout.get("confidence") or 0)
+                vlive = bool(vout["live_likely"])
+                passed = vlive and vconf >= 0.5
+                score = round(max(0.0, min(1.0, vconf)), 3)
+                model_version = f"{vision_openrouter.vision_model_name()}+opencv"
+        except Exception as e:
+            logger.warning("OpenRouter liveness vision failed, using OpenCV only: %s", e)
 
     record = BiometricResult(
         session_id=session_id,
         step_progress_id=step_progress_id,
         check_type="liveness",
-        passed=bool(result["passed"]),
-        score=float(result.get("score", 0)),
-        model_version="opencv-heuristic-v2",
-        raw_response=result,
+        passed=passed,
+        score=score,
+        model_version=model_version,
+        raw_response=_sanitize(combined),
     )
     db.add(record)
     await db.flush()

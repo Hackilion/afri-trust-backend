@@ -51,10 +51,11 @@ async def run_async_migrations() -> None:
     elif settings.DATABASE_SSL:
         import ssl
 
-        ctx = ssl.create_default_context()
-        ctx.check_hostname = False
-        ctx.verify_mode = ssl.CERT_NONE
-        kwargs["connect_args"] = {"ssl": ctx}
+        import certifi
+
+        kwargs["connect_args"] = {
+            "ssl": ssl.create_default_context(cafile=certifi.where()),
+        }
 
     connectable = create_async_engine(url, **kwargs)
     async with connectable.connect() as connection:

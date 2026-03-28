@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -74,6 +74,34 @@ async def create_applicant(
         },
     )
 
+    return ApplicantOut(
+        id=applicant.id,
+        org_id=applicant.org_id,
+        external_id=applicant.external_id,
+        email=applicant.email,
+        phone=applicant.phone,
+        full_name=applicant.full_name,
+        metadata=applicant.metadata_,
+        created_at=applicant.created_at,
+        updated_at=applicant.updated_at,
+    )
+
+
+@router.get("/resolve", response_model=ApplicantOut)
+async def resolve_applicant_by_external_id(
+    external_id: str = Query(..., min_length=1, max_length=255),
+    auth: AuthContext = Depends(get_auth_context),
+    db: AsyncSession = Depends(get_db),
+):
+    """Look up an applicant by org-scoped external_id (API key or JWT). Used by the Web SDK when create returns 409."""
+    stmt = select(Applicant).where(
+        Applicant.org_id == auth.org_id,
+        Applicant.external_id == external_id,
+    )
+    result = await db.execute(stmt)
+    applicant = result.scalar_one_or_none()
+    if not applicant:
+        raise NotFoundError("Applicant not found for this external_id")
     return ApplicantOut(
         id=applicant.id,
         org_id=applicant.org_id,

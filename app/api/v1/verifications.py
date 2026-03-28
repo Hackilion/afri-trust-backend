@@ -24,6 +24,7 @@ from app.services import (
     audit_service,
     biometric_service,
     document_processor,
+    document_type_validation,
     orchestrator,
 )
 from app.services.workflow_short_code import resolve_published_workflow_id
@@ -218,7 +219,7 @@ async def upload_document(
     if not data:
         raise BadRequestError("Empty file")
 
-    step, tier = await orchestrator.submit_document(
+    step, tier = await orchestrator.prepare_document_upload(
         db, session, document_type
     )
 
@@ -246,6 +247,20 @@ async def upload_document(
         db, artifact, file_path
     )
 
+    ok, validation_err = document_type_validation.evaluate_declared_vs_extracted(
+        document_type, extracted
+    )
+    if not ok:
+        await db.delete(extracted)
+        await db.delete(artifact)
+        await storage.delete(file_key)
+        await db.flush()
+        raise BadRequestError(validation_err or "Document did not pass validation.")
+
+    await orchestrator.finalize_document_upload(
+        db, session, step, tier, document_type, True
+    )
+
     await audit_service.log_event(
         db,
         org_id=auth.org_id,
@@ -263,6 +278,8 @@ async def upload_document(
         "extracted_data": extracted.extracted_data,
         "confidence_score": extracted.confidence_score,
         "fraud_signals": extracted.fraud_signals,
+        "detected_document_type": extracted.document_classification,
+        "document_type_validated": True,
     }
 
 

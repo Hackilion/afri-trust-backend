@@ -36,6 +36,8 @@ class Settings(BaseSettings):
     # Dashboard assistant: OpenRouter OpenAI-compatible API (server-side key; not exposed to the browser).
     OPENROUTER_API_KEY: Optional[str] = None
     OPENROUTER_MODEL: str = "openai/gpt-4o-mini"
+    # If unset, vision uses OPENROUTER_MODEL (e.g. anthropic/claude-haiku-4.5 for docs + liveness).
+    OPENROUTER_VISION_MODEL: Optional[str] = None
     OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1"
     # Optional; defaults to PUBLIC_APP_URL. OpenRouter recommends HTTP-Referer for rankings.
     OPENROUTER_HTTP_REFERER: Optional[str] = None

@@ -28,9 +28,10 @@ def _build_engine():
         kwargs["pool_size"] = 5
         kwargs["max_overflow"] = 5
         if settings.DATABASE_SSL:
-            ctx = _ssl.create_default_context()
-            ctx.check_hostname = False
-            ctx.verify_mode = _ssl.CERT_NONE
+            import certifi
+
+            # Use certifi CA bundle (fixes verify failures on some macOS Python builds).
+            ctx = _ssl.create_default_context(cafile=certifi.where())
             kwargs["connect_args"] = {"ssl": ctx}
 
     return create_async_engine(url, **kwargs)

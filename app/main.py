@@ -178,6 +178,7 @@ from app.api.v1 import (  # noqa: E402
     dashboard,
     kyc_data,
     org,
+    sdk_demo,
     tier_profiles,
     verification_live,
     verifications,
@@ -188,6 +189,7 @@ from app.api.v1 import (  # noqa: E402
 PREFIX = settings.API_V1_PREFIX
 app.include_router(auth.router, prefix=PREFIX)
 app.include_router(org.router, prefix=PREFIX)
+app.include_router(sdk_demo.router, prefix=PREFIX)
 app.include_router(api_keys.router, prefix=PREFIX)
 app.include_router(tier_profiles.router, prefix=PREFIX)
 app.include_router(workflows.router, prefix=PREFIX)
