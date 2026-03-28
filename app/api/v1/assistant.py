@@ -1,18 +1,38 @@
-"""Dashboard assistant: proxy to OpenRouter (OpenAI-compatible API)."""
+"""Dashboard assistant: OpenRouter proxy + persisted chat sessions (JWT)."""
 
 import logging
 from typing import Any
+from uuid import UUID
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import AuthContext, require_jwt
 from app.core.config import settings
+from app.core.exceptions import NotFoundError
+from app.db.session import get_db
+from app.models.assistant_session import AssistantChatSession
 from app.schemas.assistant import AssistantChatRequest
+from app.schemas.assistant_sessions import (
+    AssistantSessionCreate,
+    AssistantSessionDetailOut,
+    AssistantSessionOut,
+    AssistantSessionPatch,
+)
 
 _log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/assistant", tags=["Assistant"])
+
+_EMPTY_STATE: dict[str, Any] = {
+    "v": 2,
+    "messages": [],
+    "apiMessages": [],
+    "toolLog": [],
+    "suggestionChecks": {},
+}
 
 
 def _openrouter_chat_url() -> str:
@@ -109,3 +129,127 @@ async def llm_chat(
         status_code=502,
         detail="The cloud assistant is temporarily unavailable. Please try again.",
     )
+
+
+@router.get("/sessions", response_model=list[AssistantSessionOut])
+async def list_assistant_sessions(
+    _auth: AuthContext = Depends(require_jwt),
+    db: AsyncSession = Depends(get_db),
+    limit: int = 30,
+) -> list[AssistantSessionOut]:
+    lim = min(max(limit, 1), 50)
+    stmt = (
+        select(AssistantChatSession)
+        .where(
+            AssistantChatSession.org_id == _auth.org_id,
+            AssistantChatSession.user_id == _auth.actor_id,
+        )
+        .order_by(AssistantChatSession.updated_at.desc())
+        .limit(lim)
+    )
+    result = await db.execute(stmt)
+    rows = list(result.scalars().all())
+    return [AssistantSessionOut.model_validate(r) for r in rows]
+
+
+@router.post(
+    "/sessions",
+    response_model=AssistantSessionDetailOut,
+    status_code=201,
+)
+async def create_assistant_session(
+    body: AssistantSessionCreate,
+    auth: AuthContext = Depends(require_jwt),
+    db: AsyncSession = Depends(get_db),
+) -> AssistantSessionDetailOut:
+    row = AssistantChatSession(
+        org_id=auth.org_id,
+        user_id=auth.actor_id,
+        preview=(body.preview or "")[:200],
+        state=dict(_EMPTY_STATE),
+    )
+    db.add(row)
+    await db.commit()
+    await db.refresh(row)
+    st = row.state if isinstance(row.state, dict) else dict(_EMPTY_STATE)
+    return AssistantSessionDetailOut(
+        id=row.id,
+        preview=row.preview or "",
+        state=st,
+        updated_at=row.updated_at,
+    )
+
+
+@router.get("/sessions/{session_id}", response_model=AssistantSessionDetailOut)
+async def get_assistant_session(
+    session_id: UUID,
+    auth: AuthContext = Depends(require_jwt),
+    db: AsyncSession = Depends(get_db),
+) -> AssistantSessionDetailOut:
+    stmt = select(AssistantChatSession).where(
+        AssistantChatSession.id == session_id,
+        AssistantChatSession.org_id == auth.org_id,
+        AssistantChatSession.user_id == auth.actor_id,
+    )
+    result = await db.execute(stmt)
+    row = result.scalar_one_or_none()
+    if not row:
+        raise NotFoundError("Session not found")
+    st = row.state if isinstance(row.state, dict) else {}
+    return AssistantSessionDetailOut(
+        id=row.id,
+        preview=row.preview or "",
+        state=st,
+        updated_at=row.updated_at,
+    )
+
+
+@router.patch("/sessions/{session_id}", response_model=AssistantSessionDetailOut)
+async def patch_assistant_session(
+    session_id: UUID,
+    body: AssistantSessionPatch,
+    auth: AuthContext = Depends(require_jwt),
+    db: AsyncSession = Depends(get_db),
+) -> AssistantSessionDetailOut:
+    stmt = select(AssistantChatSession).where(
+        AssistantChatSession.id == session_id,
+        AssistantChatSession.org_id == auth.org_id,
+        AssistantChatSession.user_id == auth.actor_id,
+    )
+    result = await db.execute(stmt)
+    row = result.scalar_one_or_none()
+    if not row:
+        raise NotFoundError("Session not found")
+    if body.preview is not None:
+        row.preview = body.preview[:200]
+    if body.state is not None:
+        row.state = body.state
+    await db.commit()
+    await db.refresh(row)
+    st = row.state if isinstance(row.state, dict) else {}
+    return AssistantSessionDetailOut(
+        id=row.id,
+        preview=row.preview or "",
+        state=st,
+        updated_at=row.updated_at,
+    )
+
+
+@router.delete("/sessions/{session_id}")
+async def delete_assistant_session(
+    session_id: UUID,
+    auth: AuthContext = Depends(require_jwt),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, bool]:
+    stmt = select(AssistantChatSession).where(
+        AssistantChatSession.id == session_id,
+        AssistantChatSession.org_id == auth.org_id,
+        AssistantChatSession.user_id == auth.actor_id,
+    )
+    result = await db.execute(stmt)
+    row = result.scalar_one_or_none()
+    if not row:
+        raise NotFoundError("Session not found")
+    await db.delete(row)
+    await db.commit()
+    return {"ok": True}
