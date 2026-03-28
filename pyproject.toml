@@ -1,8 +1,9 @@
 [project]
 name = "afri-trust-backend"
 version = "0.1.0"
-description = "AfriTrust backend API"
+description = "AfriTrust backend and KYC API"
 requires-python = ">=3.11"
+readme = "README.md"
 dependencies = [
     "fastapi",
     "uvicorn[standard]",
@@ -21,6 +22,14 @@ dependencies = [
     "Pillow",
     "opencv-python-headless",
 ]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["app*"]
 
 [tool.pyright]
 include = ["app"]

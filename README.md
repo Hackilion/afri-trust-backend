@@ -14,8 +14,9 @@ For system context, deployment, security model, verification pipeline, Web SDK, 
 cd afri-trust-backend
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
+pip install -e .
 cp .env.example .env
-PYTHONPATH=. uvicorn app.main:app --reload --port 8000
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 - **Swagger Docs**: http://localhost:8000/docs
