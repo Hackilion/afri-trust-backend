@@ -182,9 +182,10 @@
       return this._req("POST", `/v1/verifications/${sessionId}/documents`, fd, true);
     }
 
-    uploadSelfie(sessionId, blob) {
+    uploadSelfie(sessionId, blob, captureMode) {
       const fd = new FormData();
       fd.append("file", blob, "selfie.jpg");
+      if (captureMode) fd.append("capture_mode", captureMode);
       return this._req("POST", `/v1/verifications/${sessionId}/selfie`, fd, true);
     }
 
@@ -381,18 +382,27 @@
       });
     }
 
-    renderSelfieCapture(label, onCapture) {
+    renderSelfieCapture(label, onCapture, opts) {
+      opts = opts || {};
+      const requireLive = opts.requireLiveCamera === true;
       let html = `<h3 style="font-size:15px;margin-bottom:14px;color:#1e293b;">${this._esc(label)}</h3>`;
+      if (requireLive) {
+        html += `<p class="at-hint" style="margin:-8px 0 14px;font-size:12px;color:#64748b;">Use your device camera — a live capture is required for liveness (gallery uploads are not accepted).</p>`;
+      }
       html += `<div class="at-camera">
         <video id="at-video" autoplay playsinline></video>
         <canvas id="at-canvas"></canvas>
         <img id="at-preview" class="preview" style="display:none;">
-        <button class="at-btn at-btn-primary" id="at-capture">Capture Photo</button>
+        <button class="at-btn at-btn-primary" id="at-capture">Capture live photo</button>
         <button class="at-btn at-btn-secondary" id="at-retake" style="display:none;">Retake</button>
-        <button class="at-btn at-btn-success" id="at-confirm" style="display:none;">Use This Photo</button>
-        <div style="margin-top:12px;"><button class="at-btn at-btn-secondary" id="at-file-fallback">Upload from device instead</button></div>
-        <input type="file" accept="image/*" capture="user" id="at-selfie-file" style="display:none;">
-      </div>`;
+        <button class="at-btn at-btn-success" id="at-confirm" style="display:none;">Submit photo</button>`;
+      if (!requireLive) {
+        html += `<div style="margin-top:12px;"><button type="button" class="at-btn at-btn-secondary" id="at-file-fallback">Upload from device instead</button></div>
+        <input type="file" accept="image/*" capture="user" id="at-selfie-file" style="display:none;">`;
+      } else {
+        html += `<input type="file" id="at-selfie-file" style="display:none;" disabled>`;
+      }
+      html += `</div>`;
       html += `<div id="at-selfie-err" style="margin-top:8px;"></div>`;
 
       const body = this.root.querySelector(".at-body");
@@ -411,14 +421,22 @@
 
       const startCamera = async () => {
         try {
-          stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } } });
+          stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: { ideal: 720 }, height: { ideal: 540 } } });
           video.srcObject = stream;
           video.style.display = "block";
           captureBtn.style.display = "";
-        } catch {
+        } catch (e) {
           video.style.display = "none";
           captureBtn.style.display = "none";
-          fallbackBtn.textContent = "Select photo from device";
+          const errEl = body.querySelector("#at-selfie-err");
+          if (requireLive) {
+            const msg = (e && e.name === "NotAllowedError")
+              ? "Camera access was denied. Allow the camera for this site to complete liveness."
+              : "Could not open the camera. Use HTTPS, allow permissions, or try another browser.";
+            if (errEl) errEl.innerHTML = this.error(msg);
+          } else if (fallbackBtn) {
+            fallbackBtn.textContent = "Select photo from device";
+          }
         }
       };
       startCamera();
@@ -452,25 +470,27 @@
         confirmBtn.disabled = true;
         confirmBtn.textContent = "Uploading...";
         if (stream) stream.getTracks().forEach(t => t.stop());
-        onCapture(capturedBlob);
+        onCapture(capturedBlob, "live_camera");
       });
 
-      fallbackBtn.addEventListener("click", () => fileInput.click());
-      fileInput.addEventListener("change", () => {
-        const file = fileInput.files[0];
-        if (!file) return;
-        if (stream) stream.getTracks().forEach(t => t.stop());
-        video.style.display = "none";
-        captureBtn.style.display = "none";
-        preview.src = URL.createObjectURL(file);
-        preview.style.display = "block";
-        confirmBtn.style.display = "";
-        confirmBtn.addEventListener("click", () => {
-          confirmBtn.disabled = true;
-          confirmBtn.textContent = "Uploading...";
-          onCapture(file);
-        }, { once: true });
-      });
+      if (fallbackBtn && !requireLive) {
+        fallbackBtn.addEventListener("click", () => fileInput.click());
+        fileInput.addEventListener("change", () => {
+          const file = fileInput.files[0];
+          if (!file) return;
+          if (stream) stream.getTracks().forEach(t => t.stop());
+          video.style.display = "none";
+          captureBtn.style.display = "none";
+          preview.src = URL.createObjectURL(file);
+          preview.style.display = "block";
+          confirmBtn.style.display = "";
+          confirmBtn.addEventListener("click", () => {
+            confirmBtn.disabled = true;
+            confirmBtn.textContent = "Uploading...";
+            onCapture(file, "file_upload");
+          }, { once: true });
+        });
+      }
     }
 
     renderResult(result, details) {
@@ -692,17 +712,20 @@
           } else if (pendingChecks.includes("selfie")) {
             label = "Take a selfie for your verification";
           }
-          this.renderer.renderSelfieCapture(label, async (blob) => {
+          const needLive = pendingChecks.includes("liveness");
+          this.renderer.renderSelfieCapture(label, async (blob, captureMode) => {
             try {
-              await this.api.uploadSelfie(this.sessionId, blob);
+              await this.api.uploadSelfie(this.sessionId, blob, captureMode);
               await this._processStep();
             } catch (err) {
               const body = this.renderer.root.querySelector(".at-body");
               const errDiv = body.querySelector("#at-selfie-err");
               if (errDiv) errDiv.innerHTML = this.renderer.error(err.detail || "Upload failed");
+              const confirmBtn = body.querySelector("#at-confirm");
+              if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = "Submit photo"; }
               this._cb("onError", err);
             }
-          });
+          }, { requireLiveCamera: needLive });
           return;
         }
 

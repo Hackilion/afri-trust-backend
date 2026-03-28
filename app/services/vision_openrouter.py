@@ -174,14 +174,14 @@ async def assess_selfie_liveness_vision(
 ) -> dict[str, Any]:
     """LLM vision assessment for presentation-attack resistance (complements OpenCV heuristics)."""
     system = (
-        "You evaluate a single selfie for identity verification liveness. "
-        "Reject obvious non-live cases: photo of a printed photo, phone/laptop screen showing a face, "
-        "mask covering identity, extreme darkness, or no human face. "
-        "Accept normal selfies with one visible face. "
+        "You evaluate a selfie submitted as a LIVE camera capture for identity liveness. "
+        "Reject presentation attacks: printed photo, photo-of-screen, deepfake glitches, heavy masks, "
+        "no face, or multiple dominant faces. Prefer natural skin texture, consistent lighting, "
+        "and a single frontal face. Be skeptical of flat uniform regions that suggest a screen. "
         "Reply with one JSON object only, no markdown: "
         '{"live_likely": true or false, "confidence": number from 0 to 1, "reasons": ["brief reason"]}'
     )
-    user = "Does this image show a live person suitable for liveness verification?"
+    user = "Was this taken as a live camera selfie (not a saved file of a face)? Is the subject likely live?"
     return await vision_chat_json(
         system=system,
         user_text=user,

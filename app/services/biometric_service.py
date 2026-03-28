@@ -8,6 +8,8 @@ Uses pure OpenCV:
 """
 
 import logging
+import mimetypes
+from pathlib import Path
 from typing import Any, Optional
 from uuid import UUID
 
@@ -21,20 +23,28 @@ from app.services import vision_openrouter
 
 logger = logging.getLogger(__name__)
 
-FACE_CASCADE = None
-PROFILE_CASCADE = None
+# Cached classifiers (tuple avoids Pyright inferring Optional[None] from module-level sentinels).
+_haar_pair: tuple[Any, Any] | None = None
 
 
-def _get_cascades():
-    global FACE_CASCADE, PROFILE_CASCADE
-    if FACE_CASCADE is None:
-        FACE_CASCADE = cv2.CascadeClassifier(
-            cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+def _haarcascade_path(name: str) -> str:
+    # cv2.data is runtime-only in many OpenCV builds; resolve via package path for typing + portability.
+    return str(Path(cv2.__file__).resolve().parent / "data" / name)
+
+
+def _get_cascades() -> tuple[Any, Any]:
+    global _haar_pair
+    cached = _haar_pair
+    if cached is None:
+        frontal = cv2.CascadeClassifier(
+            _haarcascade_path("haarcascade_frontalface_default.xml")
         )
-        PROFILE_CASCADE = cv2.CascadeClassifier(
-            cv2.data.haarcascades + "haarcascade_profileface.xml"
+        profile = cv2.CascadeClassifier(
+            _haarcascade_path("haarcascade_profileface.xml")
         )
-    return FACE_CASCADE, PROFILE_CASCADE
+        cached = (frontal, profile)
+        _haar_pair = cached
+    return cached
 
 
 def _detect_faces(image_path: str) -> list[tuple[int, int, int, int]]:
@@ -105,7 +115,7 @@ def _orb_match_score(face1: np.ndarray, face2: np.ndarray) -> float:
     g1 = cv2.cvtColor(face1, cv2.COLOR_BGR2GRAY)
     g2 = cv2.cvtColor(face2, cv2.COLOR_BGR2GRAY)
 
-    orb = cv2.ORB_create(nfeatures=500)
+    orb = cv2.ORB_create(nfeatures=500)  # type: ignore[attr-defined]
     kp1, des1 = orb.detectAndCompute(g1, None)
     kp2, des2 = orb.detectAndCompute(g2, None)
 
@@ -191,7 +201,7 @@ def _liveness_check(image_path: str) -> dict[str, Any]:
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     blur = cv2.Laplacian(gray, cv2.CV_64F).var()
     result["blur_score"] = round(float(blur), 2)
-    result["checks"]["not_blurry"] = blur > 25
+    result["checks"]["not_blurry"] = blur > 32
 
     hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
     brightness = float(np.mean(hsv[:, :, 2]))
@@ -202,7 +212,7 @@ def _liveness_check(image_path: str) -> dict[str, Any]:
     result["checks"]["has_color"] = saturation > 8
 
     result["resolution"] = f"{w}x{h}"
-    result["checks"]["adequate_resolution"] = w >= 200 and h >= 200
+    result["checks"]["adequate_resolution"] = w >= 320 and h >= 240
 
     if faces:
         fx, fy, fw, fh = max(faces, key=lambda f: f[2] * f[3])
@@ -210,7 +220,7 @@ def _liveness_check(image_path: str) -> dict[str, Any]:
         if face_gray.size > 0:
             texture = cv2.Laplacian(face_gray, cv2.CV_64F).var()
             result["face_texture"] = round(float(texture), 2)
-            result["checks"]["face_has_texture"] = texture > 15
+            result["checks"]["face_has_texture"] = texture > 18
         else:
             result["checks"]["face_has_texture"] = False
     else:
@@ -219,7 +229,9 @@ def _liveness_check(image_path: str) -> dict[str, Any]:
     passed = sum(1 for v in result["checks"].values() if v)
     total = len(result["checks"])
     result["score"] = round(passed / total, 2) if total else 0.0
-    result["passed"] = result["score"] >= 0.6
+    # Single face strongly preferred for liveness (reduces printed-photo ambiguity).
+    strict_ok = result["checks"].get("single_face") and result["checks"].get("not_blurry")
+    result["passed"] = result["score"] >= 0.65 and bool(strict_ok)
 
     return _sanitize(result)
 
@@ -281,8 +293,15 @@ async def run_liveness_check(
                 combined["vision"] = vout
                 vconf = float(vout.get("confidence") or 0)
                 vlive = bool(vout["live_likely"])
-                passed = vlive and vconf >= 0.5
-                score = round(max(0.0, min(1.0, vconf)), 3)
+                op_pass = bool(opencv_result["passed"])
+                op_score = float(opencv_result.get("score", 0))
+                # Require both signal families when vision is configured (stricter spoof resistance).
+                vision_ok = vlive and vconf >= 0.55
+                passed = op_pass and vision_ok
+                score = round(
+                    max(0.0, min(1.0, 0.45 * op_score + 0.55 * vconf)),
+                    3,
+                )
                 model_version = f"{vision_openrouter.vision_model_name()}+opencv"
         except Exception as e:
             logger.warning("OpenRouter liveness vision failed, using OpenCV only: %s", e)
@@ -291,10 +310,10 @@ async def run_liveness_check(
         session_id=session_id,
         step_progress_id=step_progress_id,
         check_type="liveness",
-        passed=bool(result["passed"]),
-        score=float(result.get("score", 0)),
-        model_version="opencv-heuristic-v3",
-        raw_response=result,
+        passed=passed,
+        score=score,
+        model_version=model_version,
+        raw_response=_sanitize(combined),
     )
     db.add(record)
     await db.flush()
