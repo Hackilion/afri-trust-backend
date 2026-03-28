@@ -21,6 +21,17 @@ def _build_engine():
     if is_sqlite:
         kwargs["connect_args"] = {"check_same_thread": False}
         kwargs["poolclass"] = StaticPool
+
+        import sqlite3
+        db_path = url.replace("sqlite+aiosqlite:///", "").lstrip("./")
+        if db_path:
+            try:
+                conn = sqlite3.connect(db_path)
+                conn.execute("PRAGMA journal_mode=WAL")
+                conn.execute("PRAGMA busy_timeout=5000")
+                conn.close()
+            except Exception:
+                pass
     else:
         import ssl as _ssl
 
