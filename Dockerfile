@@ -23,6 +23,7 @@ EXPOSE 8000
 CMD ["gunicorn", "app.main:app", \
      "-k", "uvicorn.workers.UvicornWorker", \
      "-b", "0.0.0.0:8000", \
-     "-w", "4", \
+     "-w", "1", \
+     "--threads", "4", \
      "--timeout", "120", \
      "--access-logfile", "-"]

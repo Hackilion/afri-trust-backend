@@ -26,6 +26,7 @@ from app.services import (
     document_processor,
     orchestrator,
 )
+from app.services.workflow_short_code import resolve_published_workflow_id
 from app.storage.local import get_storage
 
 router = APIRouter(prefix="/verifications", tags=["Verifications"])
@@ -78,11 +79,17 @@ async def create_verification(
     auth: AuthContext = Depends(get_auth_context),
     db: AsyncSession = Depends(get_db),
 ):
+    workflow_uuid = await resolve_published_workflow_id(
+        db,
+        auth.org_id,
+        workflow_id=body.workflow_id,
+        workflow_code=body.workflow_code,
+    )
     session = await orchestrator.create_session(
         db,
         org_id=auth.org_id,
         applicant_id=body.applicant_id,
-        workflow_id=body.workflow_id,
+        workflow_id=workflow_uuid,
         actor_id=auth.actor_id,
         actor_type=auth.actor_type,
         ip_address=get_client_ip(request),

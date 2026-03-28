@@ -50,8 +50,11 @@ class Workflow(Base):
         order_by="WorkflowStep.step_order",
     )
 
+    short_code = Column(String(6), nullable=False)
+
     __table_args__ = (
         Index("ix_workflows_org_status", "org_id", "status"),
+        UniqueConstraint("org_id", "short_code", name="uq_workflows_org_short_code"),
     )
 
 

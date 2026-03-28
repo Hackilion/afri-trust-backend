@@ -3,7 +3,7 @@
 from typing import Optional
 from uuid import UUID
 
-from fastapi import Depends, Header, Request
+from fastapi import Depends, Header, Request, WebSocket
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -80,6 +80,17 @@ async def _resolve_api_key(raw_key: str, db: AsyncSession) -> AuthContext:
         actor_type="api_key",
         scopes=api_key.scopes or [],
     )
+
+
+async def authenticate_websocket(websocket: WebSocket, db: AsyncSession) -> AuthContext:
+    """Resolve JWT or API key from WebSocket query params (browser-friendly)."""
+    api_key = websocket.query_params.get("api_key")
+    token = websocket.query_params.get("token")
+    if api_key:
+        return await _resolve_api_key(api_key, db)
+    if token:
+        return await _resolve_jwt(token, db)
+    raise UnauthorizedError("Missing api_key or token query parameter")
 
 
 async def get_auth_context(

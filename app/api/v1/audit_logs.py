@@ -26,31 +26,34 @@ async def list_audit_logs(
     before: Optional[datetime] = Query(None),
     page: int = Query(1, ge=1),
     page_size: int = Query(25, ge=1, le=100),
-    auth: AuthContext = Depends(require_role("owner", "admin")),
+    auth: AuthContext = Depends(require_role("owner", "admin", "reviewer")),
     db: AsyncSession = Depends(get_db),
 ):
-    base = select(AuditLog).where(AuditLog.org_id == auth.org_id)
-
+    conditions = [AuditLog.org_id == auth.org_id]
     if actor_id:
-        base = base.where(AuditLog.actor_id == actor_id)
+        conditions.append(AuditLog.actor_id == actor_id)
     if resource_type:
-        base = base.where(AuditLog.resource_type == resource_type)
+        conditions.append(AuditLog.resource_type == resource_type)
     if resource_id:
-        base = base.where(AuditLog.resource_id == resource_id)
+        conditions.append(AuditLog.resource_id == resource_id)
     if action:
-        base = base.where(AuditLog.action == action)
+        conditions.append(AuditLog.action == action)
     if after:
-        base = base.where(AuditLog.created_at >= after)
+        conditions.append(AuditLog.created_at >= after)
     if before:
-        base = base.where(AuditLog.created_at <= before)
+        conditions.append(AuditLog.created_at <= before)
 
-    count_result = await db.execute(select(func.count()).select_from(base.subquery()))
-    total = count_result.scalar() or 0
+    count_stmt = select(func.count()).select_from(AuditLog).where(*conditions)
+    total = (await db.execute(count_stmt)).scalar() or 0
 
-    base = base.order_by(AuditLog.created_at.desc())
-    base = base.offset((page - 1) * page_size).limit(page_size)
-
-    result = await db.execute(base)
+    list_stmt = (
+        select(AuditLog)
+        .where(*conditions)
+        .order_by(AuditLog.created_at.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    )
+    result = await db.execute(list_stmt)
     logs = result.scalars().all()
 
     return PaginatedResponse(

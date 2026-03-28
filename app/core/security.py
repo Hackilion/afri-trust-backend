@@ -76,5 +76,10 @@ def generate_email_token() -> str:
     return secrets.token_urlsafe(32)
 
 
+def generate_email_otp() -> str:
+    """Six-digit numeric code for email verification (100000–999999)."""
+    return f"{secrets.randbelow(900_000) + 100_000:06d}"
+
+
 def generate_verification_token() -> str:
     return secrets.token_urlsafe(48)
