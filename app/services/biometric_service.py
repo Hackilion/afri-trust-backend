@@ -1,14 +1,14 @@
 """Biometric verification service — face detection, liveness, and matching.
 
-Uses pure OpenCV (no TensorFlow/DeepFace):
-  - Face detection: Haar cascade classifier
-  - Liveness: image-quality heuristics (blur, brightness, face ratio, color)
-  - Face match: histogram comparison of detected face regions (correlation)
+Uses pure OpenCV:
+  - Face detection: Haar cascade (frontal + profile)
+  - Liveness: image-quality heuristics (blur, brightness, face ratio, color, texture)
+  - Face match: ORB keypoint feature matching + structural similarity (SSIM)
+    on extracted face regions — NOT histogram (which only compares colors)
 """
 
 import logging
-import mimetypes
-from typing import Any
+from typing import Any, Optional
 from uuid import UUID
 
 import cv2
@@ -42,16 +42,21 @@ def _detect_faces(image_path: str) -> list[tuple[int, int, int, int]]:
     if img is None:
         return []
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    gray = cv2.equalizeHist(gray)
     frontal, profile = _get_cascades()
 
-    faces = frontal.detectMultiScale(gray, 1.1, 5, minSize=(40, 40))
+    faces = frontal.detectMultiScale(
+        gray, scaleFactor=1.1, minNeighbors=6, minSize=(60, 60)
+    )
     if len(faces) == 0:
-        faces = profile.detectMultiScale(gray, 1.1, 5, minSize=(40, 40))
-
+        faces = profile.detectMultiScale(
+            gray, scaleFactor=1.1, minNeighbors=6, minSize=(60, 60)
+        )
     return [(int(x), int(y), int(w), int(h)) for x, y, w, h in faces]
 
 
-def _extract_face_region(image_path: str):
+def _extract_face_region(image_path: str, size: int = 160):
+    """Extract the largest face region, resize to a fixed square."""
     img = cv2.imread(image_path)
     if img is None:
         return None
@@ -59,26 +64,87 @@ def _extract_face_region(image_path: str):
     if not faces:
         return None
     x, y, w, h = max(faces, key=lambda f: f[2] * f[3])
-    pad = int(min(w, h) * 0.1)
+    pad = int(min(w, h) * 0.15)
     ih, iw = img.shape[:2]
     x1 = max(0, x - pad)
     y1 = max(0, y - pad)
     x2 = min(iw, x + w + pad)
     y2 = min(ih, y + h + pad)
     face_roi = img[y1:y2, x1:x2]
-    return cv2.resize(face_roi, (128, 128))
+    return cv2.resize(face_roi, (size, size))
 
 
-def _compare_faces(face1: np.ndarray, face2: np.ndarray) -> float:
-    """Compare two face ROIs using histogram correlation. Returns 0.0-1.0."""
-    scores = []
-    for ch in range(3):
-        h1 = cv2.calcHist([face1], [ch], None, [64], [0, 256])
-        h2 = cv2.calcHist([face2], [ch], None, [64], [0, 256])
-        cv2.normalize(h1, h1)
-        cv2.normalize(h2, h2)
-        scores.append(cv2.compareHist(h1, h2, cv2.HISTCMP_CORREL))
-    return float(np.mean(scores))
+def _ssim(img1: np.ndarray, img2: np.ndarray) -> float:
+    """Compute structural similarity index between two grayscale images."""
+    C1 = (0.01 * 255) ** 2
+    C2 = (0.03 * 255) ** 2
+
+    g1 = cv2.cvtColor(img1, cv2.COLOR_BGR2GRAY).astype(np.float64)
+    g2 = cv2.cvtColor(img2, cv2.COLOR_BGR2GRAY).astype(np.float64)
+
+    mu1 = cv2.GaussianBlur(g1, (11, 11), 1.5)
+    mu2 = cv2.GaussianBlur(g2, (11, 11), 1.5)
+
+    mu1_sq = mu1 ** 2
+    mu2_sq = mu2 ** 2
+    mu1_mu2 = mu1 * mu2
+
+    sigma1_sq = cv2.GaussianBlur(g1 ** 2, (11, 11), 1.5) - mu1_sq
+    sigma2_sq = cv2.GaussianBlur(g2 ** 2, (11, 11), 1.5) - mu2_sq
+    sigma12 = cv2.GaussianBlur(g1 * g2, (11, 11), 1.5) - mu1_mu2
+
+    numerator = (2 * mu1_mu2 + C1) * (2 * sigma12 + C2)
+    denominator = (mu1_sq + mu2_sq + C1) * (sigma1_sq + sigma2_sq + C2)
+
+    ssim_map = numerator / denominator
+    return float(np.mean(ssim_map))
+
+
+def _orb_match_score(face1: np.ndarray, face2: np.ndarray) -> float:
+    """Match faces using ORB keypoints. Returns 0.0-1.0."""
+    g1 = cv2.cvtColor(face1, cv2.COLOR_BGR2GRAY)
+    g2 = cv2.cvtColor(face2, cv2.COLOR_BGR2GRAY)
+
+    orb = cv2.ORB_create(nfeatures=500)
+    kp1, des1 = orb.detectAndCompute(g1, None)
+    kp2, des2 = orb.detectAndCompute(g2, None)
+
+    if des1 is None or des2 is None or len(kp1) < 5 or len(kp2) < 5:
+        return 0.0
+
+    bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=False)
+    matches = bf.knnMatch(des1, des2, k=2)
+
+    good = []
+    for pair in matches:
+        if len(pair) == 2:
+            m, n = pair
+            if m.distance < 0.75 * n.distance:
+                good.append(m)
+
+    max_possible = min(len(kp1), len(kp2))
+    if max_possible == 0:
+        return 0.0
+
+    ratio = len(good) / max_possible
+    return min(1.0, ratio * 2.5)
+
+
+def _compare_faces(face1: np.ndarray, face2: np.ndarray) -> dict[str, float]:
+    """Multi-method face comparison. Returns individual and combined scores."""
+    ssim_score = _ssim(face1, face2)
+    ssim_normalized = max(0.0, (ssim_score - 0.2) / 0.6)
+
+    orb_score = _orb_match_score(face1, face2)
+
+    combined = (ssim_normalized * 0.5) + (orb_score * 0.5)
+    combined = max(0.0, min(1.0, combined))
+
+    return {
+        "ssim": round(ssim_score, 3),
+        "orb_feature_match": round(orb_score, 3),
+        "combined": round(combined, 3),
+    }
 
 
 def _sanitize(obj: Any) -> Any:
@@ -138,6 +204,18 @@ def _liveness_check(image_path: str) -> dict[str, Any]:
     result["resolution"] = f"{w}x{h}"
     result["checks"]["adequate_resolution"] = w >= 200 and h >= 200
 
+    if faces:
+        fx, fy, fw, fh = max(faces, key=lambda f: f[2] * f[3])
+        face_gray = gray[fy:fy+fh, fx:fx+fw]
+        if face_gray.size > 0:
+            texture = cv2.Laplacian(face_gray, cv2.CV_64F).var()
+            result["face_texture"] = round(float(texture), 2)
+            result["checks"]["face_has_texture"] = texture > 15
+        else:
+            result["checks"]["face_has_texture"] = False
+    else:
+        result["checks"]["face_has_texture"] = False
+
     passed = sum(1 for v in result["checks"].values() if v)
     total = len(result["checks"])
     result["score"] = round(passed / total, 2) if total else 0.0
@@ -152,25 +230,30 @@ def _face_match(selfie_path: str, document_path: str) -> dict[str, Any]:
 
     if face_selfie is None:
         return _sanitize({
-            "passed": False, "score": 0.0,
+            "passed": False,
+            "score": 0.0,
             "reason": "No face detected in selfie",
-            "model": "opencv-histogram",
+            "model": "opencv-orb-ssim-v2",
         })
     if face_doc is None:
         return _sanitize({
-            "passed": False, "score": 0.0,
+            "passed": False,
+            "score": 0.0,
             "reason": "No face detected in document",
-            "model": "opencv-histogram",
+            "model": "opencv-orb-ssim-v2",
         })
 
-    similarity = _compare_faces(face_selfie, face_doc)
-    similarity = max(0.0, min(1.0, similarity))
+    scores = _compare_faces(face_selfie, face_doc)
+    combined = scores["combined"]
+    threshold = 0.35
 
     return _sanitize({
-        "passed": similarity >= 0.45,
-        "score": round(similarity, 3),
-        "threshold": 0.45,
-        "model": "opencv-histogram",
+        "passed": combined >= threshold,
+        "score": combined,
+        "threshold": threshold,
+        "ssim_score": scores["ssim"],
+        "orb_feature_score": scores["orb_feature_match"],
+        "model": "opencv-orb-ssim-v2",
     })
 
 
@@ -208,10 +291,10 @@ async def run_liveness_check(
         session_id=session_id,
         step_progress_id=step_progress_id,
         check_type="liveness",
-        passed=passed,
-        score=score,
-        model_version=model_version,
-        raw_response=_sanitize(combined),
+        passed=bool(result["passed"]),
+        score=float(result.get("score", 0)),
+        model_version="opencv-heuristic-v3",
+        raw_response=result,
     )
     db.add(record)
     await db.flush()
@@ -234,7 +317,7 @@ async def run_face_match(
         check_type="face_match",
         passed=bool(result["passed"]),
         score=float(result.get("score", 0)),
-        model_version=str(result.get("model", "opencv-histogram")),
+        model_version=str(result.get("model", "opencv-orb-ssim-v2")),
         raw_response=result,
     )
     db.add(record)

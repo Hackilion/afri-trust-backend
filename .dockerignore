@@ -6,12 +6,7 @@ __pycache__/
 .env
 .env.production
 .git/
-.gitignore
 uploads/
 tests/
 postman/
-migrations/versions/*.py
 *.md
-docker-compose.yml
-Dockerfile
-.dockerignore
