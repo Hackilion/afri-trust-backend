@@ -374,12 +374,12 @@ async def submit_attributes(
     return step
 
 
-async def submit_document(
+async def prepare_document_upload(
     db: AsyncSession,
     session: VerificationSession,
     document_type: str,
 ) -> tuple[StepProgress, TierProfile]:
-    """Validate document type and mark the corresponding check."""
+    """Validate tier accepts this document type and mark step in progress. Does not complete ID checks until content is validated."""
     _guard_session_active(session)
 
     step = await get_current_step(db, session)
@@ -394,12 +394,6 @@ async def submit_document(
     if doc_error:
         raise BadRequestError(doc_error)
 
-    check_type = DOC_TYPE_TO_CHECK.get(document_type)
-    if check_type and check_type in (tier.required_checks or []):
-        completed = dict(step.checks_completed or {})
-        completed[check_type] = True
-        step.checks_completed = completed
-
     if step.status == "pending":
         step.status = "in_progress"
         step.started_at = datetime.now(timezone.utc)
@@ -407,8 +401,26 @@ async def submit_document(
             session.status = "in_progress"
 
     await db.flush()
-    await _try_advance(db, session, step, tier)
     return step, tier
+
+
+async def finalize_document_upload(
+    db: AsyncSession,
+    session: VerificationSession,
+    step: StepProgress,
+    tier: TierProfile,
+    document_type: str,
+    passed: bool,
+) -> None:
+    """After OCR/vision, mark government_id / address_proof check and maybe advance."""
+    check_type = DOC_TYPE_TO_CHECK.get(document_type)
+    if check_type and check_type in (tier.required_checks or []):
+        completed = dict(step.checks_completed or {})
+        completed[check_type] = passed
+        step.checks_completed = completed
+
+    await db.flush()
+    await _try_advance(db, session, step, tier)
 
 
 async def mark_check_completed(

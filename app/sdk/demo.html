@@ -9,219 +9,368 @@
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       background: #f1f5f9;
-      color: #1e293b;
+      color: #0f172a;
+      line-height: 1.45;
       min-height: 100vh;
     }
+    .wrap { max-width: 1080px; margin: 0 auto; padding: 1.25rem 1rem 2rem; }
+    header { margin-bottom: 1.25rem; }
+    header h1 { font-size: 1.25rem; font-weight: 600; letter-spacing: -0.02em; }
+    header p { font-size: 0.875rem; color: #64748b; margin-top: 0.25rem; }
 
-    .demo-header {
-      background: linear-gradient(135deg, #0f3460 0%, #16213e 100%);
-      color: #fff;
-      padding: 32px 24px;
-      text-align: center;
-    }
-    .demo-header h1 { font-size: 24px; margin-bottom: 6px; }
-    .demo-header p  { font-size: 14px; opacity: .8; }
-
-    .demo-layout {
-      max-width: 1100px;
-      margin: 0 auto;
-      padding: 32px 16px;
+    .grid {
       display: grid;
-      grid-template-columns: 380px 1fr;
-      gap: 24px;
+      grid-template-columns: minmax(280px, 320px) 1fr;
+      gap: 1.25rem;
+      align-items: start;
     }
-    @media (max-width: 800px) {
-      .demo-layout { grid-template-columns: 1fr; }
-    }
+    @media (max-width: 800px) { .grid { grid-template-columns: 1fr; } }
 
-    .config-panel {
+    .card {
       background: #fff;
+      border: 1px solid #e2e8f0;
       border-radius: 12px;
-      padding: 24px;
-      box-shadow: 0 2px 12px rgba(0,0,0,.06);
-      height: fit-content;
-      position: sticky;
-      top: 24px;
+      padding: 1rem 1rem 1.1rem;
     }
-    .config-panel h2 { font-size: 16px; margin-bottom: 16px; color: #0f3460; }
-    .config-panel label { display: block; font-size: 13px; font-weight: 500; margin-bottom: 4px; color: #475569; }
-    .config-panel input, .config-panel textarea {
-      width: 100%; padding: 10px 12px; border: 1px solid #d1d5db; border-radius: 8px;
-      font-size: 13px; margin-bottom: 14px; font-family: inherit; outline: none;
+    .card h2 {
+      font-size: 0.7rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: #94a3b8;
+      margin-bottom: 0.75rem;
     }
-    .config-panel input:focus, .config-panel textarea:focus { border-color: #3b82f6; }
-    .config-panel textarea { height: 80px; resize: vertical; }
+    label {
+      display: block;
+      font-size: 0.75rem;
+      font-weight: 500;
+      color: #64748b;
+      margin-bottom: 0.25rem;
+    }
+    input, select {
+      width: 100%;
+      padding: 0.5rem 0.65rem;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      font-size: 0.875rem;
+      margin-bottom: 0.65rem;
+      background: #fff;
+    }
+    input:focus, select:focus {
+      outline: none;
+      border-color: #3b82f6;
+      box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
+    }
+    .row { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
+    .row label { margin: 0; font-weight: 400; color: #475569; font-size: 0.8125rem; }
+    .row input[type="checkbox"] { width: auto; margin: 0 0.35rem 0 0; accent-color: #3b82f6; }
 
-    .launch-btn {
-      width: 100%; padding: 12px; background: #3b82f6; color: #fff; border: none;
-      border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer;
-      transition: background .2s;
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      padding: 0.55rem 0.75rem;
+      border-radius: 8px;
+      font-size: 0.875rem;
+      font-weight: 600;
+      border: none;
+      cursor: pointer;
+      font-family: inherit;
     }
-    .launch-btn:hover { background: #2563eb; }
-    .launch-btn:disabled { opacity: .5; cursor: not-allowed; }
+    .btn-primary { background: #2563eb; color: #fff; margin-top: 0.35rem; }
+    .btn-primary:hover { background: #1d4ed8; }
+    .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-secondary {
+      background: #fff;
+      color: #334155;
+      border: 1px solid #e2e8f0;
+      margin-top: 0.5rem;
+    }
+    .btn-secondary:hover { background: #f8fafc; }
+    .btn-inline {
+      width: auto;
+      padding: 0.4rem 0.65rem;
+      font-size: 0.8125rem;
+      font-weight: 500;
+      background: #f1f5f9;
+      border: 1px solid #e2e8f0;
+      margin-bottom: 0.65rem;
+    }
+    .btn-inline:hover { background: #e2e8f0; }
 
-    .sdk-panel {
+    .inline-h { display: flex; justify-content: space-between; align-items: baseline; gap: 0.5rem; margin-bottom: 0.25rem; }
+    .inline-h label { margin: 0; }
+
+    .msg { font-size: 0.75rem; padding: 0.45rem 0.5rem; border-radius: 6px; margin-bottom: 0.5rem; }
+    .msg-err { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
+    .msg-ok { background: #f0fdf4; color: #166534; border: 1px solid #bbf7d0; }
+    .hidden { display: none !important; }
+
+    .seg {
+      display: flex;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      overflow: hidden;
+      margin-bottom: 0.65rem;
+    }
+    .seg button {
+      flex: 1;
+      padding: 0.45rem;
+      font-size: 0.8125rem;
+      font-weight: 500;
+      border: none;
+      background: #f8fafc;
+      color: #64748b;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .seg button[data-on="1"] { background: #fff; color: #0f172a; box-shadow: inset 0 0 0 1px #e2e8f0; }
+
+    .frame {
+      border: 1px solid #e2e8f0;
+      border-radius: 12px;
+      background: #fff;
+      overflow: hidden;
+    }
+    .frame[data-m="mobile"] { max-width: 390px; margin: 0 auto; }
+    .viewport {
+      background: #f8fafc;
       min-height: 400px;
+      overflow: auto;
     }
+    .frame[data-m="mobile"] .viewport { min-height: 520px; }
 
     .placeholder {
-      background: #fff;
-      border: 2px dashed #d1d5db;
-      border-radius: 12px;
+      min-height: 360px;
       display: flex;
       align-items: center;
       justify-content: center;
-      min-height: 400px;
-      color: #94a3b8;
-      font-size: 14px;
       text-align: center;
-      padding: 24px;
+      padding: 1.5rem;
+      color: #94a3b8;
+      font-size: 0.875rem;
     }
 
-    .event-log {
-      margin-top: 24px;
-      background: #fff;
-      border-radius: 12px;
-      padding: 16px 20px;
-      box-shadow: 0 2px 12px rgba(0,0,0,.06);
-    }
-    .event-log h3 { font-size: 14px; color: #475569; margin-bottom: 10px; }
-    .event-log pre {
-      background: #f8fafc;
-      border: 1px solid #e2e8f0;
+    .log { margin-top: 1rem; }
+    .log h3 { font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: #94a3b8; margin-bottom: 0.4rem; }
+    .log pre {
+      font-size: 0.7rem;
+      background: #0f172a;
+      color: #e2e8f0;
       border-radius: 8px;
-      padding: 12px;
-      font-size: 12px;
-      max-height: 240px;
-      overflow-y: auto;
+      padding: 0.6rem 0.65rem;
+      max-height: 180px;
+      overflow: auto;
       white-space: pre-wrap;
       word-break: break-all;
     }
-
-    .instructions {
-      background: #eff6ff;
-      border: 1px solid #bfdbfe;
-      border-radius: 8px;
-      padding: 14px;
-      margin-bottom: 16px;
-      font-size: 12px;
-      line-height: 1.6;
-      color: #1e40af;
-    }
-    .instructions code { background: #dbeafe; padding: 1px 5px; border-radius: 3px; font-size: 11px; }
   </style>
 </head>
 <body>
+  <div class="wrap">
+    <header>
+      <h1>AfriTrust Web SDK demo</h1>
+      <p>Embed preview against your API. Load workflows, then launch — duplicate applicants reuse the same record automatically.</p>
+    </header>
 
-  <div class="demo-header">
-    <h1>AfriTrust Web SDK Demo</h1>
-    <p>Test the embeddable identity verification flow</p>
-  </div>
+    <div class="grid">
+      <div class="card">
+        <h2>Setup</h2>
 
-  <div class="demo-layout">
-    <div class="config-panel">
-      <h2>Configuration</h2>
+        <label for="api-key">API key</label>
+        <input type="password" id="api-key" autocomplete="off" placeholder="Required">
 
-      <div class="instructions">
-        <strong>How to test:</strong><br>
-        1. Register an org and get an API key from <code>/docs</code><br>
-        2. Create tier profiles and a workflow<br>
-        3. Publish the workflow<br>
-        4. Paste the API key and Workflow ID below<br>
-        5. Click "Launch Verification"
-      </div>
+        <label for="api-url">API base URL</label>
+        <input type="text" id="api-url" value="http://localhost:8000">
 
-      <label for="api-key">API Key</label>
-      <input type="text" id="api-key" placeholder="Paste your API key here">
-
-      <label for="api-url">API Base URL</label>
-      <input type="text" id="api-url" value="http://localhost:8000">
-
-      <label for="workflow-id">Workflow ID (UUID)</label>
-      <input type="text" id="workflow-id" placeholder="Published workflow UUID">
-
-      <label for="applicant-json">Applicant Info (JSON)</label>
-      <textarea id="applicant-json">{
-  "external_id": "demo-user-1",
-  "email": "demo@example.com",
-  "phone": "+251911000000",
-  "full_name": "Demo User"
-}</textarea>
-
-      <button class="launch-btn" id="launch-btn" onclick="launchSDK()">Launch Verification</button>
-    </div>
-
-    <div class="sdk-panel">
-      <div id="kyc-container">
-        <div class="placeholder">
-          The verification widget will appear here.<br>Configure and click "Launch Verification" to start.
+        <div class="inline-h">
+          <label for="workflow-select">Workflow</label>
+          <button type="button" class="btn btn-inline" id="load-workflows-btn">Load list</button>
         </div>
+        <div id="load-msg" class="hidden"></div>
+        <select id="workflow-select" disabled>
+          <option value="">Load workflows first</option>
+        </select>
+
+        <label for="workflow-override">Workflow ID or 6-digit code (optional)</label>
+        <input type="text" id="workflow-override" placeholder="Overrides dropdown if set">
+
+        <label for="full-name">Full name</label>
+        <input type="text" id="full-name" value="Demo User">
+
+        <label for="email">Email</label>
+        <input type="email" id="email" value="demo@example.com">
+
+        <label for="phone">Phone (optional)</label>
+        <input type="text" id="phone" value="+251911000000">
+
+        <div class="row" style="margin-bottom:0.5rem;">
+          <input type="checkbox" id="fresh-applicant" checked>
+          <label for="fresh-applicant">New applicant each launch</label>
+        </div>
+        <p style="font-size:0.7rem;color:#94a3b8;margin-bottom:0.65rem;">Uncheck to reuse one demo applicant (same external id).</p>
+
+        <label for="theme-select">Widget theme</label>
+        <select id="theme-select">
+          <option value="ocean">Ocean</option>
+          <option value="slate">Slate</option>
+          <option value="rose">Rose</option>
+          <option value="minimal">Minimal</option>
+        </select>
+
+        <div class="row" style="margin-bottom:0.65rem;">
+          <input type="checkbox" id="doc-ai" checked>
+          <label for="doc-ai">AI hints on document images (needs server OpenRouter key)</label>
+        </div>
+
+        <label>Preview</label>
+        <div class="seg" id="seg-device">
+          <button type="button" data-device="desktop" data-on="1">Desktop</button>
+          <button type="button" data-device="mobile" data-on="0">Mobile</button>
+        </div>
+
+        <button type="button" class="btn btn-primary" id="launch-btn">Launch</button>
+        <button type="button" class="btn btn-secondary" id="reset-btn">Reset</button>
       </div>
 
-      <div class="event-log">
-        <h3>SDK Event Log</h3>
-        <pre id="event-log">Waiting for SDK to start...\n</pre>
+      <div>
+        <div class="frame" id="device-frame" data-m="desktop">
+          <div class="viewport" id="kyc-container">
+            <div class="placeholder" id="placeholder">Choose workflow and press Launch.</div>
+          </div>
+        </div>
+        <div class="card log">
+          <h3>Events</h3>
+          <pre id="event-log">—</pre>
+        </div>
       </div>
     </div>
   </div>
 
   <script src="/sdk/afritrust.js"></script>
   <script>
-    function log(msg) {
-      const el = document.getElementById("event-log");
-      const ts = new Date().toLocaleTimeString();
-      el.textContent += `[${ts}] ${typeof msg === "string" ? msg : JSON.stringify(msg, null, 2)}\n`;
-      el.scrollTop = el.scrollHeight;
-    }
+    (function () {
+      var workflows = [];
+      var STABLE_EXTERNAL_ID = "afritrust-sdk-demo";
 
-    function launchSDK() {
-      const apiKey = document.getElementById("api-key").value.trim();
-      const baseUrl = document.getElementById("api-url").value.trim();
-      const workflowId = document.getElementById("workflow-id").value.trim();
-      let applicant;
-
-      try {
-        applicant = JSON.parse(document.getElementById("applicant-json").value);
-      } catch (e) {
-        alert("Invalid applicant JSON: " + e.message);
-        return;
+      function log(msg) {
+        var el = document.getElementById("event-log");
+        if (el.textContent === "—") el.textContent = "";
+        var ts = new Date().toLocaleTimeString();
+        el.textContent += "[" + ts + "] " + (typeof msg === "string" ? msg : JSON.stringify(msg, null, 2)) + "\n";
+        el.scrollTop = el.scrollHeight;
       }
 
-      if (!apiKey || !workflowId) {
-        alert("Please fill in API Key and Workflow ID");
-        return;
+      function setLoadMsg(text, kind) {
+        var box = document.getElementById("load-msg");
+        if (!text) { box.className = "hidden"; box.textContent = ""; return; }
+        box.className = "msg " + (kind === "err" ? "msg-err" : "msg-ok");
+        box.textContent = text;
       }
 
-      const container = document.getElementById("kyc-container");
-      container.innerHTML = "";
+      function normBase(url) {
+        return String(url || "").replace(/\/+$/, "");
+      }
 
-      const div = document.createElement("div");
-      div.id = "kyc-widget";
-      container.appendChild(div);
-
-      log("Starting SDK...");
-      log({ apiKey: apiKey.substring(0, 12) + "...", workflowId, applicant });
-
-      AfriTrust.start({
-        apiKey: apiKey,
-        baseUrl: baseUrl,
-        containerId: "kyc-widget",
-        workflowId: workflowId,
-        applicant: applicant,
-        onComplete: (result) => {
-          log("COMPLETE: " + JSON.stringify(result));
-        },
-        onError: (err) => {
-          log("ERROR: " + JSON.stringify(err));
-        },
-        onStepChange: (step) => {
-          log("STEP: " + JSON.stringify(step));
-        }
+      document.getElementById("load-workflows-btn").addEventListener("click", function () {
+        var apiKey = document.getElementById("api-key").value.trim();
+        var baseUrl = normBase(document.getElementById("api-url").value.trim());
+        if (!apiKey) { setLoadMsg("Enter API key first.", "err"); return; }
+        setLoadMsg("Loading…", "ok");
+        fetch(baseUrl + "/v1/sdk-demo/published-workflows", { headers: { "X-API-Key": apiKey } })
+          .then(function (res) { return res.json().then(function (data) { return { res: res, data: data }; }); })
+          .then(function (o) {
+            if (!o.res.ok) {
+              var d = o.data.detail || o.res.statusText;
+              setLoadMsg("Failed: " + (typeof d === "string" ? d : JSON.stringify(d)), "err");
+              return;
+            }
+            workflows = Array.isArray(o.data) ? o.data : [];
+            var sel = document.getElementById("workflow-select");
+            sel.innerHTML = "";
+            if (workflows.length === 0) {
+              sel.disabled = true;
+              sel.innerHTML = "<option value=\"\">No published workflows</option>";
+              setLoadMsg("No published workflows.", "err");
+              return;
+            }
+            sel.disabled = false;
+            sel.appendChild(new Option("Select…", ""));
+            workflows.forEach(function (w) {
+              sel.appendChild(new Option(w.name + " · " + (w.step_count || 0) + " steps", w.id));
+            });
+            setLoadMsg(workflows.length + " workflow(s).", "ok");
+          })
+          .catch(function (e) { setLoadMsg(String(e.message || e), "err"); });
       });
 
-      document.getElementById("launch-btn").disabled = true;
-      document.getElementById("launch-btn").textContent = "Running...";
-    }
+      document.getElementById("seg-device").addEventListener("click", function (e) {
+        var btn = e.target.closest("button[data-device]");
+        if (!btn) return;
+        var mode = btn.getAttribute("data-device");
+        document.getElementById("device-frame").setAttribute("data-m", mode === "mobile" ? "mobile" : "desktop");
+        document.querySelectorAll("#seg-device button").forEach(function (b) {
+          b.setAttribute("data-on", b.getAttribute("data-device") === mode ? "1" : "0");
+        });
+      });
+
+      function resetDemo() {
+        var container = document.getElementById("kyc-container");
+        container.innerHTML = "<div class=\"placeholder\" id=\"placeholder\">Choose workflow and press Launch.</div>";
+        document.getElementById("launch-btn").disabled = false;
+        document.getElementById("launch-btn").textContent = "Launch";
+        log("Reset.");
+      }
+
+      document.getElementById("reset-btn").addEventListener("click", resetDemo);
+
+      document.getElementById("launch-btn").addEventListener("click", function () {
+        var apiKey = document.getElementById("api-key").value.trim();
+        var baseUrl = normBase(document.getElementById("api-url").value.trim());
+        var override = document.getElementById("workflow-override").value.trim();
+        var workflowId = override || document.getElementById("workflow-select").value.trim();
+        if (!apiKey || !workflowId) {
+          alert("API key and workflow are required.");
+          return;
+        }
+
+        var fresh = document.getElementById("fresh-applicant").checked;
+        var externalId = fresh ? ("sdk-demo-" + Date.now()) : STABLE_EXTERNAL_ID;
+        var applicant = {
+          external_id: externalId,
+          full_name: document.getElementById("full-name").value.trim() || "Demo User",
+          email: document.getElementById("email").value.trim() || "demo@example.com",
+          phone: document.getElementById("phone").value.trim() || undefined
+        };
+
+        var w = workflows.find(function (x) { return x.id === workflowId; });
+        var container = document.getElementById("kyc-container");
+        container.innerHTML = "";
+        var div = document.createElement("div");
+        div.id = "kyc-widget";
+        container.appendChild(div);
+
+        log("Starting… external_id=" + externalId);
+        AfriTrust.start({
+          apiKey: apiKey,
+          baseUrl: baseUrl,
+          containerId: "kyc-widget",
+          workflowId: workflowId,
+          applicant: applicant,
+          theme: document.getElementById("theme-select").value,
+          documentIntelligence: document.getElementById("doc-ai").checked,
+          widgetTitle: w ? w.name : "Verification",
+          widgetSubtitle: w ? ((w.step_count || 0) + " steps") : "AfriTrust",
+          onComplete: function (r) { log("COMPLETE: " + JSON.stringify(r)); },
+          onError: function (err) { log("ERROR: " + JSON.stringify(err)); },
+          onStepChange: function (s) { log("STEP: " + JSON.stringify(s)); }
+        });
+
+        document.getElementById("launch-btn").disabled = true;
+        document.getElementById("launch-btn").textContent = "Running…";
+      });
+    })();
   </script>
 </body>
 </html>

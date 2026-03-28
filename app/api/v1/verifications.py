@@ -2,7 +2,7 @@ import hashlib
 import uuid as uuid_mod
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Request, UploadFile, File, Form
+from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -24,6 +24,7 @@ from app.services import (
     audit_service,
     biometric_service,
     document_processor,
+    document_type_validation,
     orchestrator,
 )
 from app.services.workflow_short_code import resolve_published_workflow_id
@@ -218,7 +219,7 @@ async def upload_document(
     if not data:
         raise BadRequestError("Empty file")
 
-    step, tier = await orchestrator.submit_document(
+    step, tier = await orchestrator.prepare_document_upload(
         db, session, document_type
     )
 
@@ -246,6 +247,30 @@ async def upload_document(
         db, artifact, file_path
     )
 
+    ok, validation_err = document_type_validation.evaluate_declared_vs_extracted(
+        document_type, extracted
+    )
+    if not ok:
+        await db.delete(extracted)
+        await db.delete(artifact)
+        await storage.delete(file_key)
+        await db.flush()
+        raise BadRequestError(validation_err or "Document did not pass validation.")
+
+    ok2, quality_err = document_type_validation.evaluate_document_quality(
+        document_type, extracted
+    )
+    if not ok2:
+        await db.delete(extracted)
+        await db.delete(artifact)
+        await storage.delete(file_key)
+        await db.flush()
+        raise BadRequestError(quality_err or "Document did not pass quality checks.")
+
+    await orchestrator.finalize_document_upload(
+        db, session, step, tier, document_type, True
+    )
+
     await audit_service.log_event(
         db,
         org_id=auth.org_id,
@@ -263,6 +288,8 @@ async def upload_document(
         "extracted_data": extracted.extracted_data,
         "confidence_score": extracted.confidence_score,
         "fraud_signals": extracted.fraud_signals,
+        "detected_document_type": extracted.document_classification,
+        "document_type_validated": True,
     }
 
 
@@ -271,6 +298,7 @@ async def upload_selfie(
     session_id: UUID,
     request: Request,
     file: UploadFile = File(...),
+    capture_mode: str | None = Form(None),
     auth: AuthContext = Depends(get_auth_context),
     db: AsyncSession = Depends(get_db),
 ):
@@ -289,6 +317,14 @@ async def upload_selfie(
     if not (needs_selfie or needs_face or needs_liveness):
         raise BadRequestError(
             "Current tier does not require selfie, face_match, or liveness checks"
+        )
+
+    mode = (capture_mode or "").strip().lower()
+    if needs_liveness and mode != "live_camera":
+        raise BadRequestError(
+            "Liveness requires a live camera capture from this browser. "
+            "Use the AfriTrust embed SDK (camera step) or send multipart field "
+            "capture_mode=live_camera with a frame taken from getUserMedia."
         )
 
     data = await file.read()
@@ -356,6 +392,7 @@ async def submit_liveness(
     session_id: UUID,
     request: Request,
     file: UploadFile = File(...),
+    capture_mode: str | None = Form(None),
     auth: AuthContext = Depends(get_auth_context),
     db: AsyncSession = Depends(get_db),
 ):
@@ -369,6 +406,13 @@ async def submit_liveness(
     tier = await orchestrator.get_tier_profile_for_step(db, step)
     if "liveness" not in (tier.required_checks or []):
         raise BadRequestError("Current tier does not require liveness check")
+
+    mode = (capture_mode or "").strip().lower()
+    if mode != "live_camera":
+        raise BadRequestError(
+            "Send capture_mode=live_camera with a photo taken from the device camera "
+            "(getUserMedia), not a gallery file upload."
+        )
 
     data = await file.read()
     if len(data) > MAX_FILE_SIZE:

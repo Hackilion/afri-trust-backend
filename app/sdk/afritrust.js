@@ -99,6 +99,26 @@
     .at-alert { padding:10px 14px; border-radius:8px; font-size:13px; margin-bottom:16px; }
     .at-alert-error { background:#fef2f2; color:#991b1b; border:1px solid #fecaca; }
     .at-alert-info  { background:#eff6ff; color:#1e40af; border:1px solid #bfdbfe; }
+
+    /* AI document hint */
+    .at-ai-hint { margin:12px 0 16px; padding:12px 14px; border-radius:10px; background:linear-gradient(135deg,#f0f9ff,#eef2ff); border:1px solid #bfdbfe; font-size:12px; }
+    .at-ai-hint .at-ai-title { font-weight:600; color:#1e3a5f; margin-bottom:8px; display:flex; align-items:center; gap:6px; }
+    .at-ai-hint .at-ai-loading { color:#475569; margin:0; }
+    .at-ai-hint dl { margin:0; display:grid; grid-template-columns:auto 1fr; gap:4px 12px; }
+    .at-ai-hint dt { color:#64748b; font-weight:500; }
+    .at-ai-hint dd { margin:0; color:#0f172a; word-break:break-word; }
+    .at-ai-hint .at-ai-note { margin-top:8px; font-size:11px; color:#64748b; }
+
+    /* Themes (default = ocean) */
+    :host([data-theme="slate"]) .at-header { background:linear-gradient(135deg,#1e293b,#0f172a); }
+    :host([data-theme="slate"]) .at-btn-primary { background:#6366f1; }
+    :host([data-theme="slate"]) .at-btn-primary:hover { background:#4f46e5; }
+    :host([data-theme="rose"]) .at-header { background:linear-gradient(135deg,#be123c,#9f1239); }
+    :host([data-theme="rose"]) .at-btn-primary { background:#e11d48; }
+    :host([data-theme="rose"]) .at-btn-primary:hover { background:#be123c; }
+    :host([data-theme="minimal"]) .at-root { box-shadow:none; border:1px solid #e5e7eb; border-radius:10px; }
+    :host([data-theme="minimal"]) .at-header { background:#111827; padding:16px 20px; }
+    :host([data-theme="minimal"]) .at-header h2 { font-size:16px; }
   `;
 
   /* ------------------------------------------------------------------ */
@@ -124,7 +144,18 @@
       return data;
     }
 
-    createApplicant(info)          { return this._req("POST", "/v1/applicants", info); }
+    async createApplicant(info) {
+      try {
+        return await this._req("POST", "/v1/applicants", info);
+      } catch (err) {
+        const ext = info && info.external_id;
+        if (err.status === 409 && ext) {
+          const q = encodeURIComponent(String(ext));
+          return await this._req("GET", `/v1/applicants/resolve?external_id=${q}`);
+        }
+        throw err;
+      }
+    }
     startSession(applicantId, wfRef) {
       const ref = String(wfRef || "").trim();
       const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -151,10 +182,17 @@
       return this._req("POST", `/v1/verifications/${sessionId}/documents`, fd, true);
     }
 
-    uploadSelfie(sessionId, blob) {
+    uploadSelfie(sessionId, blob, captureMode) {
       const fd = new FormData();
       fd.append("file", blob, "selfie.jpg");
+      if (captureMode) fd.append("capture_mode", captureMode);
       return this._req("POST", `/v1/verifications/${sessionId}/selfie`, fd, true);
+    }
+
+    visionExtract(file) {
+      const fd = new FormData();
+      fd.append("file", file, file.name || "document.jpg");
+      return this._req("POST", "/v1/sdk-demo/vision-extract", fd, true);
     }
   }
 
@@ -252,14 +290,17 @@
       });
     }
 
-    renderDocumentUpload(acceptedTypes, onUpload) {
-      let html = `<h3 style="font-size:15px;margin-bottom:14px;color:#1e293b;">Upload your identity document</h3>`;
+    renderDocumentUpload(acceptedTypes, onUpload, opts) {
+      opts = opts || {};
+      var visionExtract = opts.visionExtract;
+      let html = `<h3 id="at-doc-title" style="font-size:15px;margin-bottom:6px;color:#1e293b;">Choose your document type</h3>`;
+      html += `<p id="at-doc-sub" style="font-size:12px;color:#64748b;margin-bottom:14px;line-height:1.45;">Select the option that matches what you will upload. After upload we verify the image matches that type.</p>`;
       html += `<div class="at-doc-types">`;
       for (const t of acceptedTypes) {
         html += `<div class="at-doc-card" data-type="${t}">${DOC_LABELS[t] || t}</div>`;
       }
       html += `</div>`;
-      html += `<div class="at-upload" id="at-drop-zone"><p>Click or drag to upload document</p><input type="file" accept="image/*,.pdf" id="at-doc-file"></div>`;
+      html += `<div class="at-upload" id="at-drop-zone"><div id="at-drop-content"><p>Click or drag to upload document</p></div><input type="file" accept="image/*,.pdf" id="at-doc-file"></div>`;
       html += `<div id="at-doc-err"></div>`;
       html += `<button class="at-btn at-btn-primary" id="at-upload-doc" disabled>Upload Document</button>`;
 
@@ -269,11 +310,16 @@
       let selectedType = null;
       let selectedFile = null;
 
+      const titleEl = body.querySelector("#at-doc-title");
+      const subEl = body.querySelector("#at-doc-sub");
       body.querySelectorAll(".at-doc-card").forEach(card => {
         card.addEventListener("click", () => {
           body.querySelectorAll(".at-doc-card").forEach(c => c.classList.remove("selected"));
           card.classList.add("selected");
           selectedType = card.dataset.type;
+          const label = DOC_LABELS[selectedType] || selectedType.replace(/_/g, " ");
+          if (titleEl) titleEl.textContent = `Upload your ${label}`;
+          if (subEl) subEl.textContent = "Use a clear, well-lit photo. The file must match the type you selected.";
           body.querySelector("#at-upload-doc").disabled = !(selectedType && selectedFile);
         });
       });
@@ -281,7 +327,9 @@
       const dropZone = body.querySelector("#at-drop-zone");
       const fileInput = body.querySelector("#at-doc-file");
 
-      dropZone.addEventListener("click", () => fileInput.click());
+      dropZone.addEventListener("click", (e) => {
+        if (e.target !== fileInput) fileInput.click();
+      });
       dropZone.addEventListener("dragover", e => { e.preventDefault(); dropZone.style.borderColor = "#3b82f6"; });
       dropZone.addEventListener("dragleave", () => { dropZone.style.borderColor = ""; });
       dropZone.addEventListener("drop", e => {
@@ -294,8 +342,36 @@
       const handleFile = (file) => {
         selectedFile = file;
         dropZone.classList.add("has-file");
-        dropZone.innerHTML = `<p>Selected</p><div class="filename">${this._esc(file.name)} (${(file.size / 1024).toFixed(0)} KB)</div>`;
+        const dropContent = body.querySelector("#at-drop-content");
+        if (dropContent) {
+          dropContent.innerHTML = `<p>Selected</p><div class="filename">${this._esc(file.name)} (${(file.size / 1024).toFixed(0)} KB)</div>`;
+        }
         body.querySelector("#at-upload-doc").disabled = !selectedType;
+        const oldHint = body.querySelector(".at-ai-hint");
+        if (oldHint) oldHint.remove();
+        if (typeof visionExtract === "function" && file && file.type && file.type.indexOf("image/") === 0) {
+          const hint = document.createElement("div");
+          hint.className = "at-ai-hint";
+          hint.innerHTML = "<p class=\"at-ai-loading\">Reading document with AI…</p>";
+          dropZone.insertAdjacentElement("afterend", hint);
+          visionExtract(file).then((data) => {
+            const ex = (data && data.extracted) ? data.extracted : {};
+            const keys = Object.keys(ex);
+            if (keys.length === 0) {
+              hint.innerHTML = "<p class=\"at-ai-note\">No structured fields detected — you can still upload.</p>";
+              return;
+            }
+            const rows = keys.filter((k) => ex[k] != null && ex[k] !== "").map((k) => {
+              const label = this._esc(String(k).replace(/_/g, " "));
+              const raw = ex[k];
+              const val = this._esc(typeof raw === "object" ? JSON.stringify(raw) : String(raw));
+              return `<dt>${label}</dt><dd>${val}</dd>`;
+            }).join("");
+            hint.innerHTML = `<div class="at-ai-title">Suggested from document (AI)</div><dl>${rows}</dl><p class="at-ai-note">Verify before submitting — AI can misread. Upload sends your original file.</p>`;
+          }).catch(() => {
+            hint.remove();
+          });
+        }
       };
 
       body.querySelector("#at-upload-doc").addEventListener("click", () => {
@@ -306,18 +382,27 @@
       });
     }
 
-    renderSelfieCapture(label, onCapture) {
+    renderSelfieCapture(label, onCapture, opts) {
+      opts = opts || {};
+      const requireLive = opts.requireLiveCamera === true;
       let html = `<h3 style="font-size:15px;margin-bottom:14px;color:#1e293b;">${this._esc(label)}</h3>`;
+      if (requireLive) {
+        html += `<p class="at-hint" style="margin:-8px 0 14px;font-size:12px;color:#64748b;">Use your device camera — a live capture is required for liveness (gallery uploads are not accepted).</p>`;
+      }
       html += `<div class="at-camera">
         <video id="at-video" autoplay playsinline></video>
         <canvas id="at-canvas"></canvas>
         <img id="at-preview" class="preview" style="display:none;">
-        <button class="at-btn at-btn-primary" id="at-capture">Capture Photo</button>
+        <button class="at-btn at-btn-primary" id="at-capture">Capture live photo</button>
         <button class="at-btn at-btn-secondary" id="at-retake" style="display:none;">Retake</button>
-        <button class="at-btn at-btn-success" id="at-confirm" style="display:none;">Use This Photo</button>
-        <div style="margin-top:12px;"><button class="at-btn at-btn-secondary" id="at-file-fallback">Upload from device instead</button></div>
-        <input type="file" accept="image/*" capture="user" id="at-selfie-file" style="display:none;">
-      </div>`;
+        <button class="at-btn at-btn-success" id="at-confirm" style="display:none;">Submit photo</button>`;
+      if (!requireLive) {
+        html += `<div style="margin-top:12px;"><button type="button" class="at-btn at-btn-secondary" id="at-file-fallback">Upload from device instead</button></div>
+        <input type="file" accept="image/*" capture="user" id="at-selfie-file" style="display:none;">`;
+      } else {
+        html += `<input type="file" id="at-selfie-file" style="display:none;" disabled>`;
+      }
+      html += `</div>`;
       html += `<div id="at-selfie-err" style="margin-top:8px;"></div>`;
 
       const body = this.root.querySelector(".at-body");
@@ -336,14 +421,22 @@
 
       const startCamera = async () => {
         try {
-          stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } } });
+          stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: { ideal: 720 }, height: { ideal: 540 } } });
           video.srcObject = stream;
           video.style.display = "block";
           captureBtn.style.display = "";
-        } catch {
+        } catch (e) {
           video.style.display = "none";
           captureBtn.style.display = "none";
-          fallbackBtn.textContent = "Select photo from device";
+          const errEl = body.querySelector("#at-selfie-err");
+          if (requireLive) {
+            const msg = (e && e.name === "NotAllowedError")
+              ? "Camera access was denied. Allow the camera for this site to complete liveness."
+              : "Could not open the camera. Use HTTPS, allow permissions, or try another browser.";
+            if (errEl) errEl.innerHTML = this.error(msg);
+          } else if (fallbackBtn) {
+            fallbackBtn.textContent = "Select photo from device";
+          }
         }
       };
       startCamera();
@@ -377,25 +470,27 @@
         confirmBtn.disabled = true;
         confirmBtn.textContent = "Uploading...";
         if (stream) stream.getTracks().forEach(t => t.stop());
-        onCapture(capturedBlob);
+        onCapture(capturedBlob, "live_camera");
       });
 
-      fallbackBtn.addEventListener("click", () => fileInput.click());
-      fileInput.addEventListener("change", () => {
-        const file = fileInput.files[0];
-        if (!file) return;
-        if (stream) stream.getTracks().forEach(t => t.stop());
-        video.style.display = "none";
-        captureBtn.style.display = "none";
-        preview.src = URL.createObjectURL(file);
-        preview.style.display = "block";
-        confirmBtn.style.display = "";
-        confirmBtn.addEventListener("click", () => {
-          confirmBtn.disabled = true;
-          confirmBtn.textContent = "Uploading...";
-          onCapture(file);
-        }, { once: true });
-      });
+      if (fallbackBtn && !requireLive) {
+        fallbackBtn.addEventListener("click", () => fileInput.click());
+        fileInput.addEventListener("change", () => {
+          const file = fileInput.files[0];
+          if (!file) return;
+          if (stream) stream.getTracks().forEach(t => t.stop());
+          video.style.display = "none";
+          captureBtn.style.display = "none";
+          preview.src = URL.createObjectURL(file);
+          preview.style.display = "block";
+          confirmBtn.style.display = "";
+          confirmBtn.addEventListener("click", () => {
+            confirmBtn.disabled = true;
+            confirmBtn.textContent = "Uploading...";
+            onCapture(file, "file_upload");
+          }, { once: true });
+        });
+      }
     }
 
     renderResult(result, details) {
@@ -464,6 +559,10 @@
       const container = document.getElementById(this.config.containerId);
       if (!container) throw new Error(`Container #${this.config.containerId} not found`);
 
+      const theme = String(this.config.theme || "ocean").toLowerCase();
+      if (theme === "ocean") container.removeAttribute("data-theme");
+      else container.setAttribute("data-theme", theme);
+
       const shadow = container.attachShadow({ mode: "open" });
       shadow.innerHTML = `<style>${STYLES}</style>
         <div class="at-root">
@@ -472,6 +571,13 @@
           <div class="at-step-label"></div>
           <div class="at-body"><div class="at-loading"><div class="at-spinner"></div></div></div>
         </div>`;
+      const hdr = shadow.querySelector(".at-header");
+      if (hdr) {
+        const h2 = hdr.querySelector("h2");
+        const p = hdr.querySelector("p");
+        if (h2 && this.config.widgetTitle) h2.textContent = this.config.widgetTitle;
+        if (p && this.config.widgetSubtitle != null) p.textContent = this.config.widgetSubtitle;
+      }
       this.renderer = new Renderer(shadow);
 
       try {
@@ -574,6 +680,7 @@
         }
         if (needsDoc && acceptedDocs.length > 0) {
           this.currentPhase = "document";
+          const docIntel = this.config.documentIntelligence !== false;
           this.renderer.renderDocumentUpload(acceptedDocs, async (type, file) => {
             try {
               await this.api.uploadDocument(this.sessionId, type, file);
@@ -586,6 +693,8 @@
               if (btn) { btn.disabled = false; btn.textContent = "Upload Document"; }
               this._cb("onError", err);
             }
+          }, {
+            visionExtract: docIntel ? (f) => this.api.visionExtract(f) : null,
           });
           return;
         }
@@ -603,17 +712,20 @@
           } else if (pendingChecks.includes("selfie")) {
             label = "Take a selfie for your verification";
           }
-          this.renderer.renderSelfieCapture(label, async (blob) => {
+          const needLive = pendingChecks.includes("liveness");
+          this.renderer.renderSelfieCapture(label, async (blob, captureMode) => {
             try {
-              await this.api.uploadSelfie(this.sessionId, blob);
+              await this.api.uploadSelfie(this.sessionId, blob, captureMode);
               await this._processStep();
             } catch (err) {
               const body = this.renderer.root.querySelector(".at-body");
               const errDiv = body.querySelector("#at-selfie-err");
               if (errDiv) errDiv.innerHTML = this.renderer.error(err.detail || "Upload failed");
+              const confirmBtn = body.querySelector("#at-confirm");
+              if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = "Submit photo"; }
               this._cb("onError", err);
             }
-          });
+          }, { requireLiveCamera: needLive });
           return;
         }
 

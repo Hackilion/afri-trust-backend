@@ -6,15 +6,16 @@ document types, and computes basic fraud-detection heuristics.
 """
 
 import logging
-import os
 import re
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 
 from PIL import Image, ImageFilter, ImageStat
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.models.document import DocumentArtifact, ExtractedIdentity
+from app.services import vision_openrouter
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +25,7 @@ try:
     TESSERACT_AVAILABLE = True
 except ImportError:
     TESSERACT_AVAILABLE = False
-    logger.warning("pytesseract not installed — OCR will return empty results")
+    logger.warning("pytesseract not installed — OCR will use OpenRouter vision when configured")
 
 
 DATE_PATTERNS = [
@@ -173,6 +174,14 @@ def _compute_fraud_signals(img: Image.Image, text: str) -> dict[str, Any]:
     return signals
 
 
+def _vision_to_extracted(vision: dict[str, Any]) -> dict[str, Any]:
+    """Map vision JSON into extracted_data (drop meta keys consumed elsewhere)."""
+    out = dict(vision)
+    out.pop("extraction_confidence", None)
+    out.pop("document_type_guess", None)
+    return {k: v for k, v in out.items() if v is not None and v != ""}
+
+
 async def process_document(
     db: AsyncSession,
     artifact: DocumentArtifact,
@@ -188,25 +197,87 @@ async def process_document(
         img = Image.open(file_path)
 
         if TESSERACT_AVAILABLE:
-            ocr_data = pytesseract.image_to_data(
-                img, output_type=pytesseract.Output.DICT, lang="eng"
+            try:
+                ocr_data = pytesseract.image_to_data(
+                    img, output_type=pytesseract.Output.DICT, lang="eng"
+                )
+                confidences = [
+                    int(c)
+                    for c in ocr_data.get("conf", [])
+                    if str(c).lstrip("-").isdigit() and int(c) > 0
+                ]
+                confidence = (
+                    round(sum(confidences) / len(confidences) / 100, 2) if confidences else 0.0
+                )
+                raw_text = pytesseract.image_to_string(img, lang="eng")
+            except Exception as ocr_exc:
+                logger.warning(
+                    "Tesseract OCR skipped for %s: %s", artifact.id, ocr_exc
+                )
+                raw_text = ""
+                confidence = 0.0
+
+        ocr_fields = _extract_fields(raw_text)
+        cls_from_text = _classify_document(raw_text)
+
+        has_key = bool((settings.OPENROUTER_API_KEY or "").strip())
+        need_vision = has_key and (
+            not TESSERACT_AVAILABLE
+            or len(raw_text.strip()) < 30
+            or confidence < 0.15
+        )
+
+        vision: dict[str, Any] = {}
+        if need_vision:
+            with open(file_path, "rb") as f:
+                file_bytes = f.read()
+            mime = artifact.mime_type or "image/jpeg"
+            try:
+                vision = await vision_openrouter.extract_identity_from_document_image(
+                    file_bytes, mime, artifact.document_type
+                )
+            except Exception as ve:
+                logger.warning("OpenRouter document vision failed for %s: %s", artifact.id, ve)
+                vision = {}
+
+        if need_vision:
+            guess_raw = vision.get("document_type_guess") if vision else None
+            guess = (
+                guess_raw.strip().lower()
+                if isinstance(guess_raw, str) and guess_raw.strip()
+                else ""
             )
-            confidences = [
-                int(c)
-                for c in ocr_data.get("conf", [])
-                if str(c).lstrip("-").isdigit() and int(c) > 0
-            ]
-            confidence = round(sum(confidences) / len(confidences) / 100, 2) if confidences else 0.0
+            if guess and guess != "other":
+                doc_classification = guess
+            else:
+                # Vision ran but could not confirm a type — do not trust declared type for validation.
+                doc_classification = "other"
+            if vision:
+                vconf = vision.get("extraction_confidence")
+                if isinstance(vconf, (int, float)):
+                    confidence = max(confidence, min(1.0, float(vconf)))
+                merged = _vision_to_extracted(vision)
+                for k, v in merged.items():
+                    if v is not None and v != "":
+                        ocr_fields[k] = v
+                ocr_fields["vision_extraction"] = True
+                ocr_fields["model"] = vision_openrouter.vision_model_name()
+                if not raw_text.strip():
+                    try:
+                        import json as _json
 
-            raw_text = pytesseract.image_to_string(img, lang="eng")
+                        raw_text = _json.dumps(merged, default=str)[:1200]
+                    except Exception:
+                        raw_text = str(merged)[:500]
         else:
-            raw_text = ""
-            confidence = 0.0
+            if cls_from_text != "other":
+                doc_classification = cls_from_text
+            elif len(raw_text.strip()) > 40:
+                doc_classification = "other"
 
-        doc_classification = _classify_document(raw_text)
-        extracted_data = _extract_fields(raw_text)
-        extracted_data["raw_text_preview"] = raw_text[:500]
-        fraud_signals = _compute_fraud_signals(img, raw_text)
+        extracted_data = ocr_fields
+        extracted_data["raw_text_preview"] = (raw_text or "")[:500]
+        fraud_signals = _compute_fraud_signals(img, raw_text or " ")
 
     except Exception:
         logger.exception("Document processing failed for %s", artifact.id)
